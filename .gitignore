@@ -36,5 +36,6 @@ ENV/
 # macOS
 .DS_Store
 
-# Project-specific (reference docs, not tracked)
+# Project-specific
 reference-docs/
+config.py

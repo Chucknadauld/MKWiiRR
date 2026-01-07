@@ -1,103 +1,80 @@
 """
-MKWiiRR Room Monitor
-Monitors Retro Rewind rooms for high average VR.
+MKWiiRR Room Dashboard
+Live terminal display of high-VR Retro Rewind rooms.
 """
 
 import time
-import requests
+import sys
 
-API_URL = "https://rwfc.net/api/roomstatus"
+try:
+    from config import VR_THRESHOLD, POLL_INTERVAL_DASHBOARD as POLL_INTERVAL, RETRO_TRACKS_ONLY
+except ImportError:
+    print("Error: config.py not found. Copy config.example.py to config.py")
+    sys.exit(1)
 
-"""
-VR Threshold is the MINIMUM average room VR required for a notification.
-Change accordingly.
-"""
-VR_THRESHOLD = 35000
-
-POLL_INTERVAL = 30  # seconds
+from core import fetch_rooms, get_high_vr_rooms
 
 
-def fetch_rooms():
-    """Fetch current rooms from the RWFC API."""
-    response = requests.get(API_URL, timeout=10)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("rooms", [])
+def clear_lines(n):
+    """Clear n lines above cursor."""
+    for _ in range(n):
+        sys.stdout.write("\033[A")
+        sys.stdout.write("\033[K")
 
 
-def calculate_room_avg_vr(room):
-    """Calculate average VR for a room. Returns None if no VR data."""
-    players = room.get("players", [])
-    vr_values = [p.get("vr") for p in players if p.get("vr") is not None]
+def print_dashboard(rooms, lines_printed):
+    """Print live dashboard. Returns number of lines printed."""
+    if lines_printed > 0:
+        clear_lines(lines_printed)
 
-    if not vr_values:
-        return None
-    return sum(vr_values) / len(vr_values)
+    timestamp = time.strftime("%H:%M:%S")
 
+    if not rooms:
+        print(f"[{timestamp}] No rooms above {VR_THRESHOLD:,} VR")
+        return 1
 
-def check_high_vr_rooms(rooms):
-    """Find rooms with average VR above threshold."""
-    high_vr_rooms = []
+    lines = [f"━━━ {len(rooms)} high-VR room(s) | {timestamp} ━━━"]
 
     for room in rooms:
-        # Skip private rooms
-        if room.get("type") == "private":
-            continue
+        joinable = "JOINABLE" if room["is_joinable"] else "NOT JOINABLE"
+        suspended = "SUSPENDED" if room["is_suspended"] else "UNSUSPENDED"
+        lines.append(f"  {room['id']}: {room['avg_vr']:,.0f} VR | {room['player_count']}p | {joinable} | {suspended}")
 
-        avg_vr = calculate_room_avg_vr(room)
-        if avg_vr and avg_vr > VR_THRESHOLD:
-            players = room.get("players", [])
-            high_vr_rooms.append({
-                "id": room.get("id"),
-                "avg_vr": avg_vr,
-                "player_count": len(players),
-                "players": [p.get("name", "Unknown") for p in players],
-                "is_joinable": room.get("isJoinable", False),
-            })
+    lines.append(f"━━━ Threshold: {VR_THRESHOLD:,} | Poll: {POLL_INTERVAL}s ━━━")
 
-    # Sort by average VR descending
-    high_vr_rooms.sort(key=lambda r: r["avg_vr"], reverse=True)
-    return high_vr_rooms
+    for line in lines:
+        print(line)
 
-
-def print_alert(high_vr_rooms):
-    """Print alert for high VR rooms."""
-    print("\n" + "=" * 50)
-    print(f"HIGH VR ALERT! Found {len(high_vr_rooms)} room(s) above {VR_THRESHOLD:,} VR")
-    print("=" * 50)
-
-    for room in high_vr_rooms:
-        status = "JOINABLE" if room["is_joinable"] else "NOT JOINABLE"
-        print(f"\nRoom {room['id']} [{status}]")
-        print(f"  Average VR: {room['avg_vr']:,.0f}")
-        print(f"  Players ({room['player_count']}): {', '.join(room['players'])}")
-
-    print()
+    return len(lines)
 
 
 def main():
-    """Main monitoring loop."""
-    print(f"Starting MKWiiRR Room Monitor")
-    print(f"Threshold: {VR_THRESHOLD:,} VR | Polling every {POLL_INTERVAL}s")
-    print("-" * 50)
+    """Main dashboard loop."""
+    print("MKWiiRR Room Dashboard")
+    print(f"Threshold: {VR_THRESHOLD:,} VR | Poll: {POLL_INTERVAL}s")
+    if RETRO_TRACKS_ONLY:
+        print("Filter: Retro Tracks only")
+    print("-" * 50 + "\n")
 
-    while True:
-        try:
-            rooms = fetch_rooms()
-            high_vr_rooms = check_high_vr_rooms(rooms)
+    lines_printed = 0
 
-            if high_vr_rooms:
-                print_alert(high_vr_rooms)
-            else:
-                timestamp = time.strftime("%H:%M:%S")
-                print(f"[{timestamp}] No rooms above {VR_THRESHOLD:,} VR")
+    try:
+        while True:
+            try:
+                rooms = fetch_rooms()
+                high_vr_rooms = get_high_vr_rooms(rooms, VR_THRESHOLD, RETRO_TRACKS_ONLY)
+                lines_printed = print_dashboard(high_vr_rooms, lines_printed)
 
-        except requests.RequestException as e:
-            print(f"Error fetching rooms: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+            except Exception as e:
+                if lines_printed > 0:
+                    clear_lines(lines_printed)
+                print(f"[Error: {e}]")
+                lines_printed = 1
 
-        time.sleep(POLL_INTERVAL)
+            time.sleep(POLL_INTERVAL)
+
+    except KeyboardInterrupt:
+        print("\n\nDashboard stopped.")
 
 
 if __name__ == "__main__":
