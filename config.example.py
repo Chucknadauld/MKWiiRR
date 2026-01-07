@@ -19,3 +19,6 @@ RETRO_TRACKS_ONLY = False
 # Notification toggles (notifier only)
 NOTIFY_NEW_ROOM = True              # Notify when a new high-VR room is found
 NOTIFY_BECAME_JOINABLE = True       # Notify when a room becomes joinable
+
+# Dashboard toggles
+SHOW_OPEN_HOSTS = False             # Show open host players with VR and friend codes

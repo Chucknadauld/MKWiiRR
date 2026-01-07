@@ -22,11 +22,24 @@ def get_room_info(room):
     vr_values = [p.get("vr") for p in players if p.get("vr") is not None]
     avg_vr = sum(vr_values) / len(vr_values) if vr_values else 0
 
+    # Extract open host players with their VR and friend codes
+    open_hosts = []
+    for p in players:
+        if p.get("isOpenHost", False):
+            open_hosts.append({
+                "name": p.get("name", "Unknown"),
+                "vr": p.get("vr", 0),
+                "fc": p.get("friendCode", ""),
+            })
+    # Sort by VR descending
+    open_hosts.sort(key=lambda x: x["vr"], reverse=True)
+
     return {
         "id": room.get("id"),
         "avg_vr": avg_vr,
         "player_count": len(players),
         "players": [p.get("name", "Unknown") for p in players],
+        "open_hosts": open_hosts,
         "is_joinable": room.get("isJoinable", False),
         "is_suspended": room.get("suspend", False),
         "room_type": room.get("rk", ""),

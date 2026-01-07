@@ -34,6 +34,7 @@ Edit `config.py` to customize:
 | `RETRO_TRACKS_ONLY` | False | Only show/track Retro Tracks rooms |
 | `NOTIFY_NEW_ROOM` | True | Notify on new high-VR room |
 | `NOTIFY_BECAME_JOINABLE` | True | Notify when room becomes joinable |
+| `SHOW_OPEN_HOSTS` | False | Show open host players with VR and friend codes |
 
 ## Features
 
