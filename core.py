@@ -31,8 +31,8 @@ def get_room_info(room):
                 "vr": p.get("vr", 0),
                 "fc": p.get("friendCode", ""),
             })
-    # Sort by VR descending
-    open_hosts.sort(key=lambda x: x["vr"], reverse=True)
+    # Sort by VR descending (treat None as 0)
+    open_hosts.sort(key=lambda x: x["vr"] or 0, reverse=True)
 
     return {
         "id": room.get("id"),
@@ -42,7 +42,6 @@ def get_room_info(room):
         "open_hosts": open_hosts,
         "is_joinable": room.get("isJoinable", False),
         "is_suspended": room.get("suspend", False),
-        # rk keeps rule code (e.g., vs_10 or vs_20); roomType is the human label
         "room_type": room.get("rk", ""),
         "room_label": room.get("roomType", ""),
     }
@@ -53,7 +52,6 @@ def is_retro_tracks(room_info):
     label = (room_info.get("room_label") or "").strip().lower()
     if label:
         return label == "retro tracks"
-    # Fallback: if label missing, conservatively treat as not retro
     return False
 
 
