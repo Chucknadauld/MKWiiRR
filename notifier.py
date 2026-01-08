@@ -3,6 +3,7 @@ MKWiiRR Smart Notifier
 Sends notifications for high-VR room events.
 """
 
+import subprocess
 import time
 import sys
 
@@ -22,8 +23,17 @@ from core import fetch_rooms, get_room_info, is_retro_tracks
 # =============================================================================
 
 
+def _notify(title, message):
+    """Send a macOS notification using terminal-notifier."""
+    subprocess.run(
+        ["terminal-notifier", "-title", title, "-message", message, "-sound", "default"],
+        check=False,
+    )
+
+
 def notify_new_room(all_rooms):
     """Notify when a new high-VR room is found."""
+    # Terminal output
     print("\n" + "=" * 55)
     print("NEW HIGH-VR ROOM FOUND!")
     print("=" * 55)
@@ -34,15 +44,30 @@ def notify_new_room(all_rooms):
         print(f"  Players ({r['player_count']}): {', '.join(r['players'])}")
     print("=" * 55 + "\n")
 
+    # macOS notification
+    top_room = all_rooms[0]
+    room_count = len(all_rooms)
+    title = f"Room Above {VR_THRESHOLD // 1000}k VR!"
+    msg = f"{top_room['avg_vr']:,.0f} avg • {top_room['player_count']}p"
+    if room_count > 1:
+        msg += f" (+{room_count - 1} more)"
+    _notify(title, msg)
+
 
 def notify_became_joinable(room):
     """Notify when a tracked room becomes joinable."""
+    # Terminal output
     print("\n" + "=" * 55)
     print(f"ROOM {room['id']} IS NOW JOINABLE!")
     print("=" * 55)
     print(f"  Average VR: {room['avg_vr']:,.0f}")
     print(f"  Players ({room['player_count']}): {', '.join(room['players'])}")
     print("=" * 55 + "\n")
+
+    # macOS notification
+    title = "Room Now Joinable!"
+    msg = f"{room['avg_vr']:,.0f} VR avg • {room['player_count']}p"
+    _notify(title, msg)
 
 
 # =============================================================================
