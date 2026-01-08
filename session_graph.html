@@ -91,7 +91,7 @@
 <body>
     <div class="container">
         <h1>🏎️ MKWiiRR Session Tracker</h1>
-        <p class="subtitle">Last updated: 04:11:13 PM</p>
+        <p class="subtitle">Last updated: 04:15:17 PM</p>
         
         <div class="room-info">
             <strong>Room:</strong> PCTSPM
@@ -104,19 +104,19 @@
             </div>
             <div class="stat-box">
                 <div class="stat-label">Current VR</div>
-                <div class="stat-value neutral">34,313</div>
+                <div class="stat-value neutral">34,368</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Net Change</div>
-                <div class="stat-value neutral">+0</div>
+                <div class="stat-value positive">+55</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Races</div>
-                <div class="stat-value neutral">0</div>
+                <div class="stat-value neutral">1</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Avg Per Race</div>
-                <div class="stat-value neutral">+0.0</div>
+                <div class="stat-value positive">+55.0</div>
             </div>
         </div>
         
@@ -126,13 +126,13 @@
         
         <div class="race-history">
             <h3>Race History (This Session)</h3>
-            <p class="waiting">Waiting for first race...</p>
+            <div class="race-item"><span>Race 1 (16:15)</span><span class="race-change positive">+55 VR</span></div>
         </div>
     </div>
     
     <script>
         const ctx = document.getElementById('vrChart').getContext('2d');
-        const data = {"labels": ["Start"], "values": [34313]};
+        const data = {"labels": ["Start", "Race 1"], "values": [34313, 34368]};
         
         new Chart(ctx, {
             type: 'line',
