@@ -110,10 +110,10 @@ def main():
                     if new_found:
                         notify_new_room(sorted(current.values(), key=lambda r: r["avg_vr"], reverse=True))
 
-                # Check for rooms that became joinable
+                # Check for rooms that became joinable (was 12 players, now fewer)
                 if NOTIFY_BECAME_JOINABLE:
                     for rid, old in tracked.items():
-                        if rid in current and not old["is_joinable"] and current[rid]["is_joinable"]:
+                        if rid in current and old["player_count"] == 12 and current[rid]["player_count"] < 12:
                             notify_became_joinable(current[rid])
 
                 tracked = current
