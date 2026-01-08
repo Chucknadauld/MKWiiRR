@@ -6,6 +6,7 @@ A Python tool for monitoring Mario Kart Wii Retro Rewind online rooms.
 
 ```bash
 pip install requests
+brew install terminal-notifier
 cp config.example.py config.py
 ```
 
@@ -17,16 +18,23 @@ cp config.example.py config.py
 python monitor.py
 ```
 
-**Notifier** - Alerts when new high-VR rooms appear or become joinable:
+**Notifier** - Alerts when rooms hit VR threshold or become joinable:
 
 ```bash
 python notifier.py
 ```
 
-**Run notifier in background** (notifications only, no terminal output):
+**Run notifier in background** (keeps running after closing terminal):
 
 ```bash
-nohup python notifier.py > /dev/null 2>&1 &
+cd ~/Documents/Github/MKWIIrr
+nohup python3 notifier.py >> ~/mkwii_notify.log 2>&1 &
+```
+
+**Check if notifier is running:**
+
+```bash
+pgrep -f notifier.py
 ```
 
 **Stop background notifier:**
@@ -35,12 +43,10 @@ nohup python notifier.py > /dev/null 2>&1 &
 pkill -f notifier.py
 ```
 
-### macOS Notifications
-
-The notifier uses `terminal-notifier` for native macOS notifications:
+**View log:**
 
 ```bash
-brew install terminal-notifier
+tail -f ~/mkwii_notify.log
 ```
 
 ## Configuration
@@ -54,13 +60,14 @@ Edit `config.py` to customize:
 | `POLL_INTERVAL_DASHBOARD` | 5       | Seconds between dashboard polls                 |
 | `POLL_INTERVAL_NOTIFIER`  | 10      | Seconds between notifier polls                  |
 | `RETRO_TRACKS_ONLY`       | False   | Only show/track Retro Tracks rooms              |
-| `NOTIFY_NEW_ROOM`         | True    | Notify on new high-VR room                      |
-| `NOTIFY_BECAME_JOINABLE`  | True    | Notify when room becomes joinable               |
+| `NOTIFY_NEW_ROOM`         | True    | Notify when room hits VR threshold              |
+| `NOTIFY_BECAME_JOINABLE`  | True    | Notify when room becomes joinable (12p → fewer) |
 | `SHOW_OPEN_HOSTS`         | False   | Show open host players with VR and friend codes |
 
 ## Features
 
 - Live dashboard with real-time room status
-- Smart notifications (only alerts on state changes)
-- Grace period tracking (rooms stay tracked between threshold and grace)
-- Configurable thresholds and toggles
+- Background notifications that persist after closing terminal
+- Smart notifications: alerts when rooms cross threshold, not on every poll
+- Grace period tracking: rooms stay tracked between threshold and grace
+- Joinable alerts: notifies when full rooms get an open slot

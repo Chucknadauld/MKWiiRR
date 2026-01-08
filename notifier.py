@@ -19,43 +19,39 @@ except ImportError:
 from core import fetch_rooms, get_room_info, is_retro_tracks
 
 # =============================================================================
-# NOTIFICATION FUNCTIONS - Replace these to change notification method
+# NOTIFICATION FUNCTIONS
 # =============================================================================
 
 
 def _notify(title, message):
     """Send a macOS notification using terminal-notifier."""
     subprocess.run(
-        ["terminal-notifier", "-title", title, "-message", message, "-sound", "default"],
+        ["terminal-notifier", "-title", title, "-message", message, "-sound", "Glass"],
         check=False,
     )
 
 
-def notify_new_room(all_rooms):
-    """Notify when a new high-VR room is found."""
+def notify_new_room(room):
+    """Notify when a room crosses above VR_THRESHOLD."""
+    joinable = "JOINABLE" if room["is_joinable"] else "NOT JOINABLE"
+    
     # Terminal output
     print("\n" + "=" * 55)
-    print("NEW HIGH-VR ROOM FOUND!")
+    print(f"ROOM HIT {VR_THRESHOLD:,}+ VR!")
     print("=" * 55)
-    for r in all_rooms:
-        joinable = "JOINABLE" if r["is_joinable"] else "NOT JOINABLE"
-        print(f"\nRoom {r['id']} [{joinable}]")
-        print(f"  Average VR: {r['avg_vr']:,.0f}")
-        print(f"  Players ({r['player_count']}): {', '.join(r['players'])}")
+    print(f"Room {room['id']} [{joinable}]")
+    print(f"  Average VR: {room['avg_vr']:,.0f}")
+    print(f"  Players ({room['player_count']}): {', '.join(room['players'])}")
     print("=" * 55 + "\n")
 
     # macOS notification
-    top_room = all_rooms[0]
-    room_count = len(all_rooms)
     title = f"Room Above {VR_THRESHOLD // 1000}k VR!"
-    msg = f"{top_room['avg_vr']:,.0f} avg • {top_room['player_count']}p"
-    if room_count > 1:
-        msg += f" (+{room_count - 1} more)"
+    msg = f"{room['avg_vr']:,.0f} avg • {room['player_count']}p"
     _notify(title, msg)
 
 
 def notify_became_joinable(room):
-    """Notify when a tracked room becomes joinable."""
+    """Notify when a tracked room becomes joinable (was 12p, now fewer)."""
     # Terminal output
     print("\n" + "=" * 55)
     print(f"ROOM {room['id']} IS NOW JOINABLE!")
@@ -71,7 +67,8 @@ def notify_became_joinable(room):
 
 
 # =============================================================================
-
+# MAIN LOOP
+# =============================================================================
 
 def main():
     """Main notification loop."""
@@ -82,41 +79,80 @@ def main():
     print("-" * 55)
     print("Waiting for high-VR rooms...\n")
 
-    tracked = {}  # room_id -> room_info
+    # tracked[room_id] = {
+    #     "above_threshold": bool,  # True if room is at/above VR_THRESHOLD
+    #     "player_count": int,
+    #     "notified": bool,         # True if we've notified for this threshold crossing
+    # }
+    tracked = {}
 
     try:
         while True:
             try:
                 rooms = fetch_rooms()
-                current = {}
 
                 for room in rooms:
                     if room.get("type") == "private":
                         continue
 
                     info = get_room_info(room)
+                    rid = info["id"]
 
+                    # Apply retro tracks filter
                     if RETRO_TRACKS_ONLY and not is_retro_tracks(info):
                         continue
 
-                    # Use grace threshold if already tracked, otherwise main threshold
-                    threshold = VR_GRACE if info["id"] in tracked else VR_THRESHOLD
-                    if info["avg_vr"] >= threshold:
-                        current[info["id"]] = info
+                    avg_vr = info["avg_vr"]
+                    player_count = info["player_count"]
 
-                # Check for new rooms
-                if NOTIFY_NEW_ROOM:
-                    new_found = any(rid not in tracked for rid in current)
-                    if new_found:
-                        notify_new_room(sorted(current.values(), key=lambda r: r["avg_vr"], reverse=True))
+                    # Case 1: Room not tracked yet
+                    if rid not in tracked:
+                        if avg_vr >= VR_THRESHOLD:
+                            # New room above threshold - notify and track
+                            if NOTIFY_NEW_ROOM:
+                                notify_new_room(info)
+                            tracked[rid] = {
+                                "above_threshold": True,
+                                "player_count": player_count,
+                                "notified": True,
+                            }
+                        # If below threshold, don't track it at all
+                        continue
 
-                # Check for rooms that became joinable (was 12 players, now fewer)
-                if NOTIFY_BECAME_JOINABLE:
-                    for rid, old in tracked.items():
-                        if rid in current and old["player_count"] == 12 and current[rid]["player_count"] < 12:
-                            notify_became_joinable(current[rid])
+                    # Case 2: Room is already tracked
+                    prev = tracked[rid]
 
-                tracked = current
+                    # Check if room dropped below grace period - stop tracking
+                    if avg_vr < VR_GRACE:
+                        del tracked[rid]
+                        continue
+
+                    # Check if room crossed UP to threshold (was in grace zone, now above)
+                    if NOTIFY_NEW_ROOM and not prev["above_threshold"] and avg_vr >= VR_THRESHOLD:
+                        notify_new_room(info)
+                        prev["notified"] = True
+
+                    # Update threshold status
+                    prev["above_threshold"] = avg_vr >= VR_THRESHOLD
+
+                    # Check if room became joinable (was 12p, now fewer)
+                    if NOTIFY_BECAME_JOINABLE and prev["player_count"] == 12 and player_count < 12:
+                        notify_became_joinable(info)
+
+                    # Update player count
+                    prev["player_count"] = player_count
+
+                # Clean up rooms that no longer exist in API response
+                current_ids = set()
+                for room in rooms:
+                    if room.get("type") != "private":
+                        info = get_room_info(room)
+                        if not RETRO_TRACKS_ONLY or is_retro_tracks(info):
+                            current_ids.add(info["id"])
+                
+                for rid in list(tracked.keys()):
+                    if rid not in current_ids:
+                        del tracked[rid]
 
             except Exception as e:
                 print(f"[Error: {e}]")
