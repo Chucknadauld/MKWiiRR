@@ -72,3 +72,51 @@ def get_high_vr_rooms(rooms, threshold, retro_only=False):
 
     high_vr.sort(key=lambda r: r["avg_vr"], reverse=True)
     return high_vr
+
+
+def find_player_room(rooms, friend_code):
+    """Find the room containing a player with the given friend code.
+    Returns (room_info, player_info) or (None, None) if not found.
+    """
+    for room in rooms:
+        players = room.get("players", [])
+        for player in players:
+            if player.get("friendCode") == friend_code:
+                return get_room_info(room), player
+    return None, None
+
+
+def fetch_player_info(friend_code):
+    """Fetch player info from leaderboard API."""
+    url = f"https://rwfc.net/api/leaderboard/player/{friend_code}"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_player_history(friend_code, count=50):
+    """Fetch player's recent VR history."""
+    url = f"https://rwfc.net/api/leaderboard/player/{friend_code}/history/recent?count={count}"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_groups():
+    """Fetch raw groups data (faster VR updates than roomstatus)."""
+    response = requests.get("http://rwfc.net/api/groups", timeout=10)
+    response.raise_for_status()
+    return response.json()
+
+
+def find_player_in_groups(friend_code):
+    """Find player in groups and return their live VR.
+    Returns (room_id, player_data) or (None, None) if not found.
+    """
+    groups = fetch_groups()
+    for group in groups:
+        players = group.get("players", {})
+        for pid, player in players.items():
+            if player.get("fc") == friend_code:
+                return group.get("id"), player
+    return None, None

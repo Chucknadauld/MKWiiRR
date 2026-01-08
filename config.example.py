@@ -22,3 +22,9 @@ NOTIFY_BECAME_JOINABLE = True       # Notify when a room becomes joinable
 
 # Dashboard toggles
 SHOW_OPEN_HOSTS = False             # Show open host players with VR and friend codes
+
+# Session tracker settings
+PLAYER_FRIEND_CODE = "1760-9375-6261"  # Your friend code for session tracking
+POLL_INTERVAL_SESSION = 10             # Seconds between session tracker polls
+SAVE_SESSION_DATA = False              # Save session data to file for later review
+SESSION_DATA_DIR = "sessions"          # Directory for saved session data (gitignored)

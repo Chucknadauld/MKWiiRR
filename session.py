@@ -1,0 +1,411 @@
+"""
+MKWiiRR Session Tracker
+Tracks your VR gains/losses during a play session with a live-updating graph.
+Simply polls /api/groups and detects VR changes.
+"""
+
+import json
+import os
+import time
+import sys
+from datetime import datetime
+
+try:
+    from config import (
+        PLAYER_FRIEND_CODE, POLL_INTERVAL_SESSION as POLL_INTERVAL,
+        SAVE_SESSION_DATA, SESSION_DATA_DIR
+    )
+except ImportError:
+    print("Error: config.py not found. Copy config.example.py to config.py")
+    sys.exit(1)
+
+from core import find_player_in_groups
+
+# =============================================================================
+# GRAPH GENERATION
+# =============================================================================
+
+GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+    <title>MKWiiRR Session Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta http-equiv="refresh" content="5">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }}
+        .subtitle {{
+            color: #888;
+            margin-bottom: 20px;
+        }}
+        .stats {{
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }}
+        .stat-box {{
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px 25px;
+            min-width: 120px;
+        }}
+        .stat-label {{
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+        }}
+        .stat-value {{
+            font-size: 28px;
+            font-weight: bold;
+        }}
+        .stat-value.positive {{ color: #00ff88; }}
+        .stat-value.negative {{ color: #ff4466; }}
+        .stat-value.neutral {{ color: #00d4ff; }}
+        .chart-container {{
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .race-history {{
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+        }}
+        .race-history h3 {{
+            margin-top: 0;
+            color: #00d4ff;
+        }}
+        .race-item {{
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a4a;
+        }}
+        .race-item:last-child {{
+            border-bottom: none;
+        }}
+        .race-change.positive {{ color: #00ff88; }}
+        .race-change.negative {{ color: #ff4466; }}
+        .room-info {{
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px 25px;
+            margin-bottom: 20px;
+        }}
+        .not-in-room {{
+            color: #ff4466;
+        }}
+        .waiting {{
+            color: #ffaa00;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏎️ MKWiiRR Session Tracker</h1>
+        <p class="subtitle">Last updated: {last_updated}</p>
+        
+        <div class="room-info">
+            {room_status}
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-label">Starting VR</div>
+                <div class="stat-value neutral">{start_vr:,}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Current VR</div>
+                <div class="stat-value neutral">{current_vr:,}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Net Change</div>
+                <div class="stat-value {net_class}">{net_change:+,}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Races</div>
+                <div class="stat-value neutral">{race_count}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Avg Per Race</div>
+                <div class="stat-value {avg_class}">{avg_per_race:+.1f}</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="vrChart"></canvas>
+        </div>
+        
+        <div class="race-history">
+            <h3>Race History (This Session)</h3>
+            {race_history_html}
+        </div>
+    </div>
+    
+    <script>
+        const ctx = document.getElementById('vrChart').getContext('2d');
+        const data = {chart_data};
+        
+        new Chart(ctx, {{
+            type: 'line',
+            data: {{
+                labels: data.labels,
+                datasets: [{{
+                    label: 'VR',
+                    data: data.values,
+                    borderColor: '#00d4ff',
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    fill: true,
+                    tension: 0.1,
+                    pointBackgroundColor: data.values.map((v, i) => {{
+                        if (i === 0) return '#00d4ff';
+                        return v > data.values[i-1] ? '#00ff88' : '#ff4466';
+                    }}),
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                animation: false,
+                plugins: {{
+                    legend: {{
+                        display: false
+                    }},
+                    title: {{
+                        display: true,
+                        text: 'VR Progression',
+                        color: '#eee',
+                        font: {{ size: 16 }}
+                    }}
+                }},
+                scales: {{
+                    x: {{
+                        ticks: {{ color: '#888' }},
+                        grid: {{ color: '#2a2a4a' }}
+                    }},
+                    y: {{
+                        ticks: {{ color: '#888' }},
+                        grid: {{ color: '#2a2a4a' }}
+                    }}
+                }}
+            }}
+        }});
+    </script>
+</body>
+</html>
+"""
+
+
+def generate_graph_html(session_data, output_path="session_graph.html"):
+    """Generate the session graph HTML file."""
+    races = session_data["races"]
+    
+    # Build chart data
+    labels = ["Start"]
+    values = [session_data["start_vr"]]
+    
+    for i, race in enumerate(races):
+        labels.append(f"Race {i + 1}")
+        values.append(race["total_vr"])
+    
+    chart_data = {"labels": labels, "values": values}
+    
+    # Calculate stats
+    race_count = len(races)
+    current_vr = session_data["current_vr"]
+    net_change = current_vr - session_data["start_vr"]
+    avg_per_race = net_change / race_count if race_count > 0 else 0
+    
+    net_class = "positive" if net_change > 0 else "negative" if net_change < 0 else "neutral"
+    avg_class = "positive" if avg_per_race > 0 else "negative" if avg_per_race < 0 else "neutral"
+    
+    # Build race history HTML (newest first)
+    race_history_items = []
+    for i, race in enumerate(reversed(races[-15:])):
+        change_class = "positive" if race["vr_change"] > 0 else "negative"
+        race_num = len(races) - i
+        time_str = race["time"]
+        race_history_items.append(
+            f'<div class="race-item">'
+            f'<span>Race {race_num} ({time_str})</span>'
+            f'<span class="race-change {change_class}">{race["vr_change"]:+,} VR</span>'
+            f'</div>'
+        )
+    
+    if race_history_items:
+        race_history_html = "".join(race_history_items)
+    else:
+        race_history_html = '<p class="waiting">Waiting for first race...</p>'
+    
+    # Room status
+    room_id = session_data.get("room_id")
+    if room_id:
+        room_status = f"<strong>Room:</strong> {room_id}"
+    else:
+        room_status = '<span class="not-in-room">Not currently in a room</span>'
+    
+    html = GRAPH_HTML_TEMPLATE.format(
+        last_updated=datetime.now().strftime("%I:%M:%S %p"),
+        room_status=room_status,
+        start_vr=session_data["start_vr"],
+        current_vr=current_vr,
+        net_change=net_change,
+        net_class=net_class,
+        race_count=race_count,
+        avg_per_race=avg_per_race,
+        avg_class=avg_class,
+        chart_data=json.dumps(chart_data),
+        race_history_html=race_history_html
+    )
+    
+    with open(output_path, "w") as f:
+        f.write(html)
+
+
+def save_session(session_data):
+    """Save session data to a JSON file."""
+    if not SAVE_SESSION_DATA:
+        return
+    
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
+    timestamp = session_data["start_time"].replace(":", "-").replace(" ", "_")
+    filename = f"session_{timestamp}.json"
+    filepath = os.path.join(SESSION_DATA_DIR, filename)
+    
+    with open(filepath, "w") as f:
+        json.dump(session_data, f, indent=2)
+    
+    print(f"Session saved to {filepath}")
+
+
+def print_status(session_data):
+    """Print current session status to terminal."""
+    races = session_data["races"]
+    current_vr = session_data["current_vr"]
+    net_change = current_vr - session_data["start_vr"]
+    room_id = session_data.get("room_id", "None")
+    
+    timestamp = time.strftime("%I:%M:%S %p")
+    
+    status = f"\r[{timestamp}] Room: {room_id} | VR: {current_vr:,} | Net: {net_change:+,} | Races: {len(races)}"
+    
+    if races:
+        last_change = races[-1]["vr_change"]
+        status += f" | Last: {last_change:+,}"
+    
+    print(status + "          ", end="", flush=True)
+
+
+def main():
+    """Main session tracking loop."""
+    print("MKWiiRR Session Tracker")
+    print(f"Friend Code: {PLAYER_FRIEND_CODE}")
+    print(f"Poll Interval: {POLL_INTERVAL}s")
+    print("-" * 55)
+    
+    # Get initial VR
+    print("Finding player...")
+    room_id, player = find_player_in_groups(PLAYER_FRIEND_CODE)
+    
+    if not player:
+        print("Not currently in a room. Join a room and restart.")
+        return
+    
+    start_vr = int(player.get("ev", 0))
+    player_name = player.get("name", "Unknown")
+    
+    session_data = {
+        "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "player_name": player_name,
+        "start_vr": start_vr,
+        "current_vr": start_vr,
+        "room_id": room_id,
+        "races": []
+    }
+    
+    print(f"Player: {player_name}")
+    print(f"Starting VR: {start_vr:,}")
+    print(f"Room: {room_id}")
+    print("-" * 55)
+    print("Tracking... (Ctrl+C to stop)")
+    print("Run: open session_graph.html")
+    print()
+    
+    generate_graph_html(session_data)
+    last_vr = start_vr
+    
+    try:
+        while True:
+            try:
+                room_id, player = find_player_in_groups(PLAYER_FRIEND_CODE)
+                
+                if player:
+                    current_vr = int(player.get("ev", 0))
+                    session_data["room_id"] = room_id
+                    session_data["current_vr"] = current_vr
+                    
+                    # VR changed = race completed
+                    if current_vr != last_vr:
+                        vr_change = current_vr - last_vr
+                        race_data = {
+                            "time": datetime.now().strftime("%H:%M"),
+                            "vr_change": vr_change,
+                            "total_vr": current_vr
+                        }
+                        session_data["races"].append(race_data)
+                        
+                        emoji = "🟢" if vr_change > 0 else "🔴"
+                        print(f"\n{emoji} Race {len(session_data['races'])}: {vr_change:+,} VR (Total: {current_vr:,})")
+                        
+                        last_vr = current_vr
+                        generate_graph_html(session_data)
+                else:
+                    session_data["room_id"] = None
+                
+                print_status(session_data)
+                
+            except Exception as e:
+                print(f"\n[Error: {e}]")
+            
+            time.sleep(POLL_INTERVAL)
+    
+    except KeyboardInterrupt:
+        print("\n\n" + "=" * 55)
+        print("SESSION ENDED")
+        print("=" * 55)
+        
+        races = session_data["races"]
+        if races:
+            net_change = session_data["current_vr"] - session_data["start_vr"]
+            avg = net_change / len(races)
+            
+            print(f"Total Races: {len(races)}")
+            print(f"Starting VR: {session_data['start_vr']:,}")
+            print(f"Ending VR: {session_data['current_vr']:,}")
+            print(f"Net Change: {net_change:+,}")
+            print(f"Avg Per Race: {avg:+.1f}")
+        else:
+            print("No races completed this session")
+        
+        save_session(session_data)
+        print("=" * 55)
+
+
+if __name__ == "__main__":
+    main()
