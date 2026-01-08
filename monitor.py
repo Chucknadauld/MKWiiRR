@@ -22,60 +22,98 @@ def clear_lines(n):
         sys.stdout.write("\033[K")
 
 
-def print_dashboard(rooms, lines_printed):
-    """Print live dashboard. Returns number of lines printed."""
+def _format_room_line(room):
+    joinable = "Yes" if room["is_joinable"] else "No"
+    suspended = "Yes" if room["is_suspended"] else "No"
+    return (
+        f"  {room['id']:<10} | VR: {room['avg_vr']:>7,.0f} | "
+        f"{room['player_count']:>2}p | Joinable: {joinable:<3} | Suspended: {suspended:<3}"
+    )
+
+
+def _format_host_lines(room):
+    lines = []
+    if SHOW_OPEN_HOSTS and room["open_hosts"]:
+        for host in room["open_hosts"]:
+            lines.append(
+                f"    ↳ {host['name']:<12} | VR: {host['vr']:>7,} | FC: {host['fc']}"
+            )
+    return lines
+
+
+def print_dashboard(rooms, lines_printed, last_signature):
+    """Print live dashboard only when content changes.
+    Returns (lines_printed, new_signature).
+    """
+    # Build stable content (signature) without the timestamp
+    stable_lines = []
+    if not rooms:
+        stable_lines.append(f"No rooms above {VR_THRESHOLD:,} VR")
+    else:
+        stable_lines.append(f"{len(rooms)} high-VR room(s)")
+        for idx, room in enumerate(rooms):
+            stable_lines.append(_format_room_line(room))
+            stable_lines.extend(_format_host_lines(room))
+            if idx < len(rooms) - 1:
+                stable_lines.append("")  # blank line between rooms
+
+    signature = "\n".join(stable_lines)
+
+    # No change: keep the dashboard untouched
+    if signature == last_signature:
+        return lines_printed, last_signature
+
+    # Change detected: re-render with timestamp
     if lines_printed > 0:
         clear_lines(lines_printed)
 
-    timestamp = time.strftime("%H:%M:%S")
+    timestamp = time.strftime("%I:%M:%S %p")
 
+    display_lines = []
     if not rooms:
-        print(f"[{timestamp}] No rooms above {VR_THRESHOLD:,} VR")
-        return 1
+        display_lines.append(f"[{timestamp}] No rooms above {VR_THRESHOLD:,} VR")
+    else:
+        display_lines.append(f"━━━ {len(rooms)} high-VR room(s) | {timestamp} ━━━")
+        display_lines.append("")  # blank line after header
+        for idx, room in enumerate(rooms):
+            display_lines.append(_format_room_line(room))
+            display_lines.extend(_format_host_lines(room))
+            if idx < len(rooms) - 1:
+                display_lines.append("")  # blank line between rooms
 
-    lines = [f"━━━ {len(rooms)} high-VR room(s) | {timestamp} ━━━"]
-
-    for room in rooms:
-        joinable = "JOINABLE" if room["is_joinable"] else "NOT JOINABLE"
-        suspended = "SUSPENDED" if room["is_suspended"] else "UNSUSPENDED"
-        lines.append(f"  {room['id']}: {room['avg_vr']:,.0f} VR | {room['player_count']}p | {joinable} | {suspended}")
-
-        if SHOW_OPEN_HOSTS and room["open_hosts"]:
-            for host in room["open_hosts"]:
-                lines.append(f"    ↳ {host['name']} | {host['vr']:,} VR | {host['fc']}")
-
-    lines.append(f"━━━ Threshold: {VR_THRESHOLD:,} | Poll: {POLL_INTERVAL}s ━━━")
-
-    for line in lines:
+    for line in display_lines:
         print(line)
 
-    return len(lines)
+    return len(display_lines), signature
 
 
 def main():
     """Main dashboard loop."""
     print("MKWiiRR Room Dashboard")
-    print(f"Threshold: {VR_THRESHOLD:,} VR | Poll: {POLL_INTERVAL}s")
+    print(f"Threshold: {VR_THRESHOLD:,} VR")
     if RETRO_TRACKS_ONLY:
         print("Filter: Retro Tracks only")
     if SHOW_OPEN_HOSTS:
         print("Showing: Open hosts with VR and friend codes")
-    print("-" * 50 + "\n")
+    print("-" * 50)
 
     lines_printed = 0
+    last_signature = None
 
     try:
         while True:
             try:
                 rooms = fetch_rooms()
                 high_vr_rooms = get_high_vr_rooms(rooms, VR_THRESHOLD, RETRO_TRACKS_ONLY)
-                lines_printed = print_dashboard(high_vr_rooms, lines_printed)
+                lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature)
 
             except Exception as e:
                 if lines_printed > 0:
                     clear_lines(lines_printed)
                 print(f"[Error: {e}]")
                 lines_printed = 1
+                # Force a redraw on next successful poll so the error line gets cleared
+                last_signature = None
 
             time.sleep(POLL_INTERVAL)
 

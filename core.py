@@ -42,13 +42,19 @@ def get_room_info(room):
         "open_hosts": open_hosts,
         "is_joinable": room.get("isJoinable", False),
         "is_suspended": room.get("suspend", False),
+        # rk keeps rule code (e.g., vs_10 or vs_20); roomType is the human label
         "room_type": room.get("rk", ""),
+        "room_label": room.get("roomType", ""),
     }
 
 
 def is_retro_tracks(room_info):
     """Check if room is Retro Tracks type."""
-    return "vs" in room_info["room_type"].lower()
+    label = (room_info.get("room_label") or "").strip().lower()
+    if label:
+        return label == "retro tracks"
+    # Fallback: if label missing, conservatively treat as not retro
+    return False
 
 
 def get_high_vr_rooms(rooms, threshold, retro_only=False):
