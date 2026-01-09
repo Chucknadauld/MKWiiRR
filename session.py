@@ -145,8 +145,8 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <h1>🏎️ MKWiiRR Session Tracker</h1>
-        <p class="subtitle">Last updated: {last_updated}</p>
+        <h1>🏎️ MKWii Retro Rewind Session Tracker</h1>
+        <p class="subtitle">Total session time: {session_duration}</p>
         
         <div class="room-info">
             {room_status}
@@ -198,20 +198,54 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             type: 'line',
             data: {{
                 labels: data.labels,
-                datasets: [{{
-                    label: 'VR',
-                    data: data.values,
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                    fill: true,
-                    tension: 0.1,
-                    pointBackgroundColor: data.values.map((v, i) => {{
-                        if (i === 0) return '#00d4ff';
-                        return v > data.values[i-1] ? '#00ff88' : '#ff4466';
-                    }}),
-                    pointRadius: 6,
-                    pointHoverRadius: 8
-                }}]
+                datasets: [
+                    {{
+                        label: 'VR',
+                        data: data.values,
+                        borderColor: '#00d4ff',
+                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                        fill: true,
+                        tension: 0.1,
+                        pointBackgroundColor: data.values.map((v, i) => {{
+                            if (i === 0) return '#00d4ff';
+                            return v > data.values[i-1] ? '#00ff88' : '#ff4466';
+                        }}),
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }},
+                    {{
+                        label: 'Session Start',
+                        data: data.startLine,
+                        borderColor: '#aaaaaa',
+                        borderWidth: 1,
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0
+                    }},
+                    {{
+                        label: 'Session High',
+                        data: data.highLine,
+                        borderColor: '#00ff88',
+                        borderWidth: 1,
+                        borderDash: [6, 6],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0
+                    }},
+                    {{
+                        label: 'Session Low',
+                        data: data.lowLine,
+                        borderColor: '#ff4466',
+                        borderWidth: 1,
+                        borderDash: [6, 6],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0
+                    }}
+                ]
             }},
             options: {{
                 responsive: true,
@@ -249,6 +283,16 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     """Generate the session graph HTML file."""
     races = session_data["races"]
     
+    # Compute session duration (HH:MM:SS)
+    try:
+        start_dt = datetime.strptime(session_data["start_time"], "%Y-%m-%d %H:%M:%S")
+        elapsed_seconds = int((datetime.now() - start_dt).total_seconds())
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+        session_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    except Exception:
+        session_duration = "--:--:--"
     # Build current room players section
     players_section_html = '<p class="not-in-room">Not currently in a room</p>'
     room_id = session_data.get("room_id")
@@ -287,7 +331,21 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         labels.append(f"Race {i + 1}")
         values.append(race["total_vr"])
     
-    chart_data = {"labels": labels, "values": values}
+    # Session lines
+    start_vr = session_data["start_vr"]
+    session_high = max(values) if values else start_vr
+    session_low = min(values) if values else start_vr
+    start_line = [start_vr] * len(labels)
+    high_line = [session_high] * len(labels)
+    low_line = [session_low] * len(labels)
+    
+    chart_data = {
+        "labels": labels,
+        "values": values,
+        "startLine": start_line,
+        "highLine": high_line,
+        "lowLine": low_line
+    }
     
     # Calculate stats
     race_count = len(races)
@@ -324,7 +382,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         room_status = '<span class="not-in-room">Not currently in a room</span>'
     
     html = GRAPH_HTML_TEMPLATE.format(
-        last_updated=datetime.now().strftime("%I:%M:%S %p"),
+        session_duration=session_duration,
         room_status=room_status,
         start_vr=session_data["start_vr"],
         current_vr=current_vr,
