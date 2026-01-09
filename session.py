@@ -75,6 +75,13 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
         .stat-value.positive {{ color: #00ff88; }}
         .stat-value.negative {{ color: #ff4466; }}
         .stat-value.neutral {{ color: #00d4ff; }}
+        .stat-sub {{
+            margin-top: 6px;
+            font-size: 14px;
+            color: #aaa;
+        }}
+        .stat-sub.positive {{ color: #00ff88; }}
+        .stat-sub.neutral {{ color: #aaa; }}
         .chart-container {{
             background: #16213e;
             border-radius: 10px;
@@ -148,10 +155,6 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
         <h1>🏎️ MKWii Retro Rewind Session Tracker</h1>
         <p class="subtitle">Total session time: <span id="sessionDuration">{session_duration}</span></p>
         
-        <div class="room-info">
-            {room_status}
-        </div>
-        
         <div class="stats">
             <div class="stat-box">
                 <div class="stat-label">Starting VR</div>
@@ -170,8 +173,9 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="stat-value neutral">{race_count}</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Avg Per Race</div>
-                <div class="stat-value {avg_class}">{avg_per_race:+.1f}</div>
+                <div class="stat-label">VR Streak</div>
+                <div class="stat-value {streak_class}">{streak_vr:+,}</div>
+                <div class="stat-sub {streak_class}">{streak_races} {streak_race_label}</div>
             </div>
         </div>
         
@@ -180,7 +184,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="players-section">
-            <h3>Current Room</h3>
+            <h3>Current Room{room_id_heading}</h3>
             {players_section_html}
         </div>
         
@@ -307,9 +311,22 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         session_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception:
         session_duration = "--:--:--"
+    # Compute current positive VR streak (sum and count of consecutive gains)
+    streak_vr = 0
+    streak_races = 0
+    for r in reversed(races):
+        change = r.get("vr_change", 0)
+        if change > 0:
+            streak_vr += change
+            streak_races += 1
+        else:
+            break
+    streak_class = "positive" if streak_vr > 0 else "neutral"
+    streak_race_label = "race" if streak_races == 1 else "races"
     # Build current room players section
     players_section_html = '<p class="not-in-room">Not currently in a room</p>'
     room_id = session_data.get("room_id")
+    room_id_heading = f" — {room_id}" if room_id else ""
     if room_id:
         try:
             rooms = fetch_rooms()
@@ -365,10 +382,8 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     race_count = len(races)
     current_vr = session_data["current_vr"]
     net_change = current_vr - session_data["start_vr"]
-    avg_per_race = net_change / race_count if race_count > 0 else 0
     
     net_class = "positive" if net_change > 0 else "negative" if net_change < 0 else "neutral"
-    avg_class = "positive" if avg_per_race > 0 else "negative" if avg_per_race < 0 else "neutral"
     
     # Build race history HTML (newest first)
     race_history_items = []
@@ -388,27 +403,22 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     else:
         race_history_html = '<p class="waiting">Waiting for first race...</p>'
     
-    # Room status
-    room_id = session_data.get("room_id")
-    if room_id:
-        room_status = f"<strong>Room:</strong> {room_id}"
-    else:
-        room_status = '<span class="not-in-room">Not currently in a room</span>'
-    
     html = GRAPH_HTML_TEMPLATE.format(
         session_duration=session_duration,
         session_start_ms=int(start_dt.timestamp() * 1000) if 'start_dt' in locals() else 0,
-        room_status=room_status,
         start_vr=session_data["start_vr"],
         current_vr=current_vr,
         net_change=net_change,
         net_class=net_class,
         race_count=race_count,
-        avg_per_race=avg_per_race,
-        avg_class=avg_class,
         chart_data=json.dumps(chart_data),
         race_history_html=race_history_html,
-        players_section_html=players_section_html
+        players_section_html=players_section_html,
+        streak_vr=streak_vr,
+        streak_races=streak_races,
+        streak_class=streak_class,
+        streak_race_label=streak_race_label,
+        room_id_heading=room_id_heading
     )
     
     with open(output_path, "w") as f:
@@ -530,13 +540,11 @@ def main():
         races = session_data["races"]
         if races:
             net_change = session_data["current_vr"] - session_data["start_vr"]
-            avg = net_change / len(races)
             
             print(f"Total Races: {len(races)}")
             print(f"Starting VR: {session_data['start_vr']:,}")
             print(f"Ending VR: {session_data['current_vr']:,}")
             print(f"Net Change: {net_change:+,}")
-            print(f"Avg Per Race: {avg:+.1f}")
         else:
             print("No races completed this session")
         
