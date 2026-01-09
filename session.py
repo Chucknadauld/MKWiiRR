@@ -19,7 +19,7 @@ except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import find_player_in_groups
+from core import find_player_in_groups, fetch_rooms
 
 # =============================================================================
 # GRAPH GENERATION
@@ -86,6 +86,34 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 10px;
             padding: 20px;
         }}
+        .players-section {{
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .players-section h3 {{
+            margin-top: 0;
+            color: #00d4ff;
+        }}
+        .room-summary {{
+            margin: 0 0 10px 0;
+            font-weight: 600;
+            color: #ddd;
+        }}
+        table.players-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        table.players-table th, table.players-table td {{
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid #2a2a4a;
+        }}
+        table.players-table th {{
+            color: #aaa;
+            font-weight: 600;
+        }}
         .race-history h3 {{
             margin-top: 0;
             color: #00d4ff;
@@ -149,6 +177,11 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
         
         <div class="chart-container">
             <canvas id="vrChart"></canvas>
+        </div>
+        
+        <div class="players-section">
+            <h3>Current Room</h3>
+            {players_section_html}
         </div>
         
         <div class="race-history">
@@ -216,6 +249,36 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     """Generate the session graph HTML file."""
     races = session_data["races"]
     
+    # Build current room players section
+    players_section_html = '<p class="not-in-room">Not currently in a room</p>'
+    room_id = session_data.get("room_id")
+    if room_id:
+        try:
+            rooms = fetch_rooms()
+            room = next((r for r in rooms if r.get("id") == room_id), None)
+            if room:
+                players = room.get("players", [])
+                # Compute average VR from available vr fields
+                vr_values = [p.get("vr") for p in players if isinstance(p.get("vr"), (int, float))]
+                avg_vr = int(sum(vr_values) / len(vr_values)) if vr_values else 0
+                summary = f'<p class="room-summary">{len(players)} Players - {avg_vr:,} VR Avg</p>'
+                # Sort players by VR descending (treat None as 0)
+                players_sorted = sorted(players, key=lambda p: p.get("vr") or 0, reverse=True)
+                rows = []
+                rows.append("<table class=\"players-table\">")
+                rows.append("<thead><tr><th>Name</th><th>Friend Code</th><th>VR</th></tr></thead><tbody>")
+                for p in players_sorted:
+                    name = p.get("name", "Unknown")
+                    fc = p.get("friendCode", "")
+                    vr = p.get("vr") if isinstance(p.get("vr"), (int, float)) else 0
+                    rows.append(f"<tr><td>{name}</td><td>{fc}</td><td>{vr:,}</td></tr>")
+                rows.append("</tbody></table>")
+                players_section_html = summary + "".join(rows)
+            else:
+                players_section_html = '<p class="waiting">Room data not found. It may have just changed.</p>'
+        except Exception:
+            players_section_html = '<p class="waiting">Unable to load room details right now.</p>'
+    
     # Build chart data
     labels = ["Start"]
     values = [session_data["start_vr"]]
@@ -271,7 +334,8 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         avg_per_race=avg_per_race,
         avg_class=avg_class,
         chart_data=json.dumps(chart_data),
-        race_history_html=race_history_html
+        race_history_html=race_history_html,
+        players_section_html=players_section_html
     )
     
     with open(output_path, "w") as f:
@@ -364,7 +428,7 @@ def main():
                     if current_vr != last_vr:
                         vr_change = current_vr - last_vr
                         race_data = {
-                            "time": datetime.now().strftime("%H:%M"),
+                            "time": datetime.now().strftime("%I:%M %p"),
                             "vr_change": vr_change,
                             "total_vr": current_vr
                         }
