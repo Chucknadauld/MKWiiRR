@@ -146,7 +146,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="container">
         <h1>🏎️ MKWii Retro Rewind Session Tracker</h1>
-        <p class="subtitle">Total session time: {session_duration}</p>
+        <p class="subtitle">Total session time: <span id="sessionDuration">{session_duration}</span></p>
         
         <div class="room-info">
             {room_status}
@@ -191,6 +191,20 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     
     <script>
+        // Live-updating session duration (counts up from 0 at session start)
+        const sessionStartMs = {session_start_ms};
+        function updateSessionDuration() {{
+            const elapsed = Date.now() - sessionStartMs;
+            const hours = Math.floor(elapsed / 3600000);
+            const minutes = Math.floor((elapsed % 3600000) / 60000);
+            const seconds = Math.floor((elapsed % 60000) / 1000);
+            const pad = (n) => String(n).padStart(2, '0');
+            const text = `${{pad(hours)}}:${{pad(minutes)}}:${{pad(seconds)}}`;
+            const el = document.getElementById('sessionDuration');
+            if (el) el.textContent = text;
+        }}
+        updateSessionDuration();
+        setInterval(updateSessionDuration, 1000);
         const ctx = document.getElementById('vrChart').getContext('2d');
         const data = {chart_data};
         
@@ -383,6 +397,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     
     html = GRAPH_HTML_TEMPLATE.format(
         session_duration=session_duration,
+        session_start_ms=int(start_dt.timestamp() * 1000) if 'start_dt' in locals() else 0,
         room_status=room_status,
         start_vr=session_data["start_vr"],
         current_vr=current_vr,
