@@ -81,6 +81,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             color: #aaa;
         }}
         .stat-sub.positive {{ color: #00ff88; }}
+        .stat-sub.negative {{ color: #ff4466; }}
         .stat-sub.neutral {{ color: #aaa; }}
         .chart-container {{
             background: #16213e;
@@ -175,7 +176,8 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="stat-box">
                 <div class="stat-label">VR Streak</div>
                 <div class="stat-value {streak_class}">{streak_vr:+,}</div>
-                <div class="stat-sub {streak_class}">{streak_races} {streak_race_label}</div>
+                <div class="stat-sub {streak_class}">Win: {streak_vr:+,} VR ({streak_races} {streak_race_label})</div>
+                <div class="stat-sub negative">Loss: {loss_streak_vr:+,} VR ({loss_streak_races} {"race" if loss_streak_races == 1 else "races"})</div>
             </div>
         </div>
         
@@ -311,14 +313,24 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         session_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception:
         session_duration = "--:--:--"
-    # Compute current positive VR streak (sum and count of consecutive gains)
+    # Compute current positive VR streak (sum and count of consecutive non-losses; 0 counts as win)
     streak_vr = 0
     streak_races = 0
     for r in reversed(races):
         change = r.get("vr_change", 0)
-        if change > 0:
+        if change >= 0:
             streak_vr += change
             streak_races += 1
+        else:
+            break
+    # Compute current loss streak (sum and count of consecutive losses)
+    loss_streak_vr = 0
+    loss_streak_races = 0
+    for r in reversed(races):
+        change = r.get("vr_change", 0)
+        if change < 0:
+            loss_streak_vr += change
+            loss_streak_races += 1
         else:
             break
     streak_class = "positive" if streak_vr > 0 else "neutral"
@@ -418,6 +430,8 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         streak_races=streak_races,
         streak_class=streak_class,
         streak_race_label=streak_race_label,
+        loss_streak_vr=loss_streak_vr,
+        loss_streak_races=loss_streak_races,
         room_id_heading=room_id_heading
     )
     
