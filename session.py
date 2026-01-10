@@ -175,9 +175,8 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="stat-box">
                 <div class="stat-label">VR Streak</div>
-                <div class="stat-value {streak_class}">{streak_vr:+,}</div>
-                <div class="stat-sub {streak_class}">Win: {streak_vr:+,} VR ({streak_races} {streak_race_label})</div>
-                <div class="stat-sub negative">Loss: {loss_streak_vr:+,} VR ({loss_streak_races} {"race" if loss_streak_races == 1 else "races"})</div>
+                <div class="stat-value {top_streak_class}">{top_streak_value_text}</div>
+                <div class="stat-sub {sub_streak_class}">{sub_streak_text}</div>
             </div>
         </div>
         
@@ -220,18 +219,18 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
                 labels: data.labels,
                 datasets: [
                     {{
-                        label: 'VR',
-                        data: data.values,
-                        borderColor: '#00d4ff',
-                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                        fill: true,
-                        tension: 0.1,
-                        pointBackgroundColor: data.values.map((v, i) => {{
-                            if (i === 0) return '#00d4ff';
-                            return v > data.values[i-1] ? '#00ff88' : '#ff4466';
-                        }}),
-                        pointRadius: 6,
-                        pointHoverRadius: 8
+                    label: 'VR',
+                    data: data.values,
+                    borderColor: '#00d4ff',
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    fill: true,
+                    tension: 0.1,
+                    pointBackgroundColor: data.values.map((v, i) => {{
+                        if (i === 0) return '#00d4ff';
+                        return v > data.values[i-1] ? '#00ff88' : '#ff4466';
+                    }}),
+                    pointRadius: 6,
+                    pointHoverRadius: 8
                     }},
                     {{
                         label: 'Session Start',
@@ -333,8 +332,25 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
             loss_streak_races += 1
         else:
             break
-    streak_class = "positive" if streak_vr > 0 else "neutral"
     streak_race_label = "race" if streak_races == 1 else "races"
+    loss_streak_race_label = "race" if loss_streak_races == 1 else "races"
+    # Choose which streak is active for display (require at least 2 in a row)
+    recent_change = races[-1]["vr_change"] if races else None
+    if recent_change is not None and recent_change >= 0 and streak_races >= 2:
+        top_streak_value_text = f"{streak_vr:+,}"
+        top_streak_class = "positive" if streak_vr > 0 else "neutral"
+        sub_streak_text = f"Win: {streak_vr:+,} VR ({streak_races} {streak_race_label})"
+        sub_streak_class = "positive" if streak_vr > 0 else "neutral"
+    elif recent_change is not None and recent_change < 0 and loss_streak_races >= 2:
+        top_streak_value_text = f"{loss_streak_vr:+,}"
+        top_streak_class = "negative"
+        sub_streak_text = f"Loss: {loss_streak_vr:+,} VR ({loss_streak_races} {loss_streak_race_label})"
+        sub_streak_class = "negative"
+    else:
+        top_streak_value_text = "-"
+        top_streak_class = "neutral"
+        sub_streak_text = ""
+        sub_streak_class = "neutral"
     # Build current room players section
     players_section_html = '<p class="not-in-room">Not currently in a room</p>'
     room_id = session_data.get("room_id")
@@ -426,12 +442,13 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         chart_data=json.dumps(chart_data),
         race_history_html=race_history_html,
         players_section_html=players_section_html,
-        streak_vr=streak_vr,
-        streak_races=streak_races,
-        streak_class=streak_class,
-        streak_race_label=streak_race_label,
+        top_streak_value_text=top_streak_value_text,
+        top_streak_class=top_streak_class,
+        sub_streak_text=sub_streak_text,
+        sub_streak_class=sub_streak_class,
         loss_streak_vr=loss_streak_vr,
         loss_streak_races=loss_streak_races,
+        loss_streak_race_label=loss_streak_race_label,
         room_id_heading=room_id_heading
     )
     
