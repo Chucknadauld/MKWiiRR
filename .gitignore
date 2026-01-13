@@ -41,3 +41,4 @@ reference-docs/
 config.py
 session_graph.html
 sessions/
+notifier.log

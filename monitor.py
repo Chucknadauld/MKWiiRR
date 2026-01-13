@@ -7,12 +7,12 @@ import time
 import sys
 
 try:
-    from config import VR_THRESHOLD, POLL_INTERVAL_DASHBOARD as POLL_INTERVAL, RETRO_TRACKS_ONLY, SHOW_OPEN_HOSTS
+    from config import VR_THRESHOLD, POLL_INTERVAL_DASHBOARD as POLL_INTERVAL, RETRO_TRACKS_ONLY, SHOW_OPEN_HOSTS, WATCHLIST_FRIEND_CODES, PLAYER_FRIEND_CODE
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import fetch_rooms, get_high_vr_rooms
+from core import fetch_rooms, get_high_vr_rooms, find_player_in_groups
 
 
 def clear_lines(n):
@@ -41,12 +41,14 @@ def _format_host_lines(room):
     return lines
 
 
-def print_dashboard(rooms, lines_printed, last_signature):
+def print_dashboard(rooms, lines_printed, last_signature, current_room_id=None, watch_hits=None):
     """Print live dashboard only when content changes.
     Returns (lines_printed, new_signature).
     """
     # Build stable content (signature) without the timestamp
     stable_lines = []
+    if current_room_id:
+        stable_lines.append(f"You: {current_room_id}")
     if not rooms:
         stable_lines.append(f"No rooms above {VR_THRESHOLD:,} VR")
     else:
@@ -54,6 +56,9 @@ def print_dashboard(rooms, lines_printed, last_signature):
         for idx, room in enumerate(rooms):
             stable_lines.append(_format_room_line(room))
             stable_lines.extend(_format_host_lines(room))
+            if watch_hits and room["id"] in watch_hits:
+                names = ", ".join(watch_hits[room["id"]])
+                stable_lines.append(f"    Watchlist: {names}")
             if idx < len(rooms) - 1:
                 stable_lines.append("")  # blank line between rooms
 
@@ -73,11 +78,16 @@ def print_dashboard(rooms, lines_printed, last_signature):
     if not rooms:
         display_lines.append(f"[{timestamp}] No rooms above {VR_THRESHOLD:,} VR")
     else:
+        if current_room_id:
+            display_lines.append(f"You: {current_room_id}")
         display_lines.append(f"━━━ {len(rooms)} high-VR room(s) | {timestamp} ━━━")
         display_lines.append("")  # blank line after header
         for idx, room in enumerate(rooms):
             display_lines.append(_format_room_line(room))
             display_lines.extend(_format_host_lines(room))
+            if watch_hits and room["id"] in watch_hits:
+                names = ", ".join(watch_hits[room["id"]])
+                display_lines.append(f"    Watchlist: {names}")
             if idx < len(rooms) - 1:
                 display_lines.append("")  # blank line between rooms
 
@@ -105,7 +115,31 @@ def main():
             try:
                 rooms = fetch_rooms()
                 high_vr_rooms = get_high_vr_rooms(rooms, VR_THRESHOLD, RETRO_TRACKS_ONLY)
-                lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature)
+                # Compute current room
+                current_room_id, _ = find_player_in_groups(PLAYER_FRIEND_CODE)
+                # Compute watchlist hits
+                watch_hits = {}
+                if WATCHLIST_FRIEND_CODES:
+                    wl_set = set(WATCHLIST_FRIEND_CODES)
+                    for r in rooms:
+                        if r.get("type") == "private":
+                            continue
+                        # Respect retro filter
+                        if RETRO_TRACKS_ONLY:
+                            # quick check via rk label: vs_ codes are retro; else skip
+                            rk = (r.get("rk") or "").lower()
+                            label = (r.get("roomType") or "").strip().lower()
+                            if not ("vs" in rk or label == "retro tracks"):
+                                continue
+                        hits = []
+                        for p in r.get("players", []):
+                            fc = p.get("friendCode")
+                            if fc and fc in wl_set:
+                                name = p.get("name", "Unknown")
+                                hits.append(f"{name}")
+                        if hits:
+                            watch_hits[r.get("id")] = hits
+                lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature, current_room_id, watch_hits)
 
             except Exception as e:
                 if lines_printed > 0:

@@ -176,7 +176,6 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="stat-box">
                 <div class="stat-label">VR Streak</div>
                 <div class="stat-value {top_streak_class}">{top_streak_value_text}</div>
-                <div class="stat-sub {sub_streak_class}">{sub_streak_text}</div>
             </div>
         </div>
         

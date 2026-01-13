@@ -10,7 +10,8 @@ import sys
 try:
     from config import (
         VR_THRESHOLD, VR_GRACE, POLL_INTERVAL_NOTIFIER as POLL_INTERVAL,
-        RETRO_TRACKS_ONLY, NOTIFY_NEW_ROOM, NOTIFY_BECAME_JOINABLE
+        RETRO_TRACKS_ONLY, NOTIFY_NEW_ROOM, NOTIFY_BECAME_JOINABLE,
+        WATCHLIST_FRIEND_CODES, WATCHLIST_NOTIFY
     )
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
@@ -66,6 +67,21 @@ def notify_became_joinable(room):
     _notify(title, msg)
 
 
+def notify_watchlist(room, matches):
+    """Notify when watchlisted friend codes are present in a room."""
+    names = ", ".join([f"{m.get('name')} ({m.get('friendCode')})" for m in matches])
+    # Terminal output
+    print("\n" + "=" * 55)
+    print(f"WATCHLIST IN ROOM {room['id']}!")
+    print("=" * 55)
+    print(f"  Matches: {names}")
+    print("=" * 55 + "\n")
+    # macOS notification
+    title = "Watchlist Player Detected"
+    msg = f"Room {room['id']}: {names}"
+    _notify(title, msg)
+
+
 # =============================================================================
 # MAIN LOOP
 # =============================================================================
@@ -85,6 +101,7 @@ def main():
     #     "notified": bool,         # True if we've notified for this threshold crossing
     # }
     tracked = {}
+    watchlist_seen = {}  # rid -> set(friendCodes) already notified
 
     try:
         while True:
@@ -101,6 +118,21 @@ def main():
                     # Apply retro tracks filter
                     if RETRO_TRACKS_ONLY and not is_retro_tracks(info):
                         continue
+
+                    # Watchlist notifications (optional)
+                    if WATCHLIST_NOTIFY and WATCHLIST_FRIEND_CODES:
+                        wl_set = set(WATCHLIST_FRIEND_CODES)
+                        matches = []
+                        for p in room.get("players", []):
+                            fc = p.get("friendCode")
+                            if fc and fc in wl_set:
+                                matches.append(p)
+                        if matches:
+                            already = watchlist_seen.get(rid, set())
+                            new_codes = {p.get("friendCode") for p in matches} - already
+                            if new_codes:
+                                notify_watchlist(info, [p for p in matches if p.get("friendCode") in new_codes])
+                                watchlist_seen[rid] = already | new_codes
 
                     avg_vr = info["avg_vr"]
                     player_count = info["player_count"]
@@ -153,6 +185,8 @@ def main():
                 for rid in list(tracked.keys()):
                     if rid not in current_ids:
                         del tracked[rid]
+                        if rid in watchlist_seen:
+                            del watchlist_seen[rid]
 
             except Exception as e:
                 print(f"[Error: {e}]")
