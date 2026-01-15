@@ -120,3 +120,30 @@ def find_player_in_groups(friend_code):
             if player.get("fc") == friend_code:
                 return group.get("id"), player
     return None, None
+
+
+def fetch_leaderboard_top(count=50):
+    """Fetch top N players by VR."""
+    url = f"https://rwfc.net/api/leaderboard/top/{int(count)}"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_goal_vr_for_rank(rank):
+    """Return the VR value at the given leaderboard rank (1-based)."""
+    try:
+        rank = int(rank)
+        if rank <= 0:
+            return None
+        top = fetch_leaderboard_top(rank)
+        # Prefer exact rank match if provided by API
+        for p in top:
+            if str(p.get("rank")) == str(rank):
+                return int(p.get("vr", 0))
+        # Fallback: assume last entry is the desired rank
+        if top:
+            return int(top[-1].get("vr", 0))
+    except Exception:
+        return None
+    return None

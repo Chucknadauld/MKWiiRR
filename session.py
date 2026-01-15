@@ -13,13 +13,13 @@ from datetime import datetime
 try:
     from config import (
         PLAYER_FRIEND_CODE, POLL_INTERVAL_SESSION as POLL_INTERVAL,
-        SAVE_SESSION_DATA, SESSION_DATA_DIR
+        SAVE_SESSION_DATA, SESSION_DATA_DIR, GOAL_LEADERBOARD_RANK
     )
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import find_player_in_groups, fetch_rooms
+from core import find_player_in_groups, fetch_rooms, get_goal_vr_for_rank
 
 # =============================================================================
 # GRAPH GENERATION
@@ -176,6 +176,10 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="stat-box">
                 <div class="stat-label">VR Streak</div>
                 <div class="stat-value {top_streak_class}">{top_streak_value_text}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Goal (Top {goal_rank})</div>
+                <div class="stat-value neutral">{goal_vr_text}</div>
             </div>
         </div>
         
@@ -411,6 +415,16 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     net_change = current_vr - session_data["start_vr"]
     
     net_class = "positive" if net_change > 0 else "negative" if net_change < 0 else "neutral"
+    # Goal VR (leaderboard rank)
+    goal_rank = GOAL_LEADERBOARD_RANK if 'GOAL_LEADERBOARD_RANK' in globals() else 0
+    goal_vr_text = "—"
+    try:
+        if goal_rank and int(goal_rank) > 0:
+            goal_vr = get_goal_vr_for_rank(goal_rank)
+            if isinstance(goal_vr, int) and goal_vr > 0:
+                goal_vr_text = f"{goal_vr:,}"
+    except Exception:
+        goal_vr_text = "—"
     
     # Build race history HTML (newest first)
     race_history_items = []
@@ -438,6 +452,8 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         net_change=net_change,
         net_class=net_class,
         race_count=race_count,
+        goal_rank=goal_rank,
+        goal_vr_text=goal_vr_text,
         chart_data=json.dumps(chart_data),
         race_history_html=race_history_html,
         players_section_html=players_section_html,

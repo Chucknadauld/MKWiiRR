@@ -136,7 +136,7 @@ def main():
                             fc = p.get("friendCode")
                             if fc and fc in wl_set:
                                 name = p.get("name", "Unknown")
-                                hits.append(f"{name}")
+                                hits.append(f"{name} ({fc})")
                         if hits:
                             watch_hits[r.get("id")] = hits
                 lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature, current_room_id, watch_hits)
