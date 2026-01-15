@@ -4,7 +4,6 @@ Sends notifications for high-VR room events.
 """
 
 import subprocess
-import time
 import sys
 
 try:
@@ -17,7 +16,7 @@ except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import fetch_rooms, get_room_info, is_retro_tracks
+from core import fetch_rooms, get_room_info, is_retro_tracks, sleep_with_jitter
 
 # =============================================================================
 # NOTIFICATION FUNCTIONS
@@ -195,7 +194,7 @@ def main():
             except Exception as e:
                 print(f"[Error: {e}]")
 
-            time.sleep(POLL_INTERVAL)
+            sleep_with_jitter(POLL_INTERVAL)
 
     except KeyboardInterrupt:
         print("\n\nNotifier stopped.")

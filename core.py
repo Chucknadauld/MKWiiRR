@@ -1,6 +1,6 @@
 """
 MKWiiRR Core
-Shared functions for RWFC API access.
+Shared functions for RWFC API access with process-safe caching.
 """
 
 import json
@@ -8,32 +8,76 @@ import os
 import random
 import time
 import requests
+import fcntl
+from contextlib import contextmanager
+
+
+def sleep_with_jitter(interval, jitter_percent=0.1):
+    """
+    Sleep for interval +/- random jitter to prevent thundering herd.
+    
+    Args:
+        interval: Base sleep time in seconds
+        jitter_percent: Max jitter as fraction of interval (default 10%)
+    """
+    jitter = random.uniform(-interval * jitter_percent, interval * jitter_percent)
+    time.sleep(interval + jitter)
 
 API_URL = "https://rwfc.net/api/roomstatus"
 
 # -----------------------------------------------------------------------------
-# Simple disk-based shared cache + 429 backoff
+# Improved disk-based shared cache with file locking + backoff
 # -----------------------------------------------------------------------------
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 _ROOMS_KEY = "roomstatus"
 _GROUPS_KEY = "groups"
 
-_TTL_ROOMS_SECONDS = 5
-_TTL_GROUPS_SECONDS = 5
+# Cache TTLs optimized for polling intervals
+# - roomstatus: 8s (covers 6s monitor polling with buffer)
+# - groups: 8s (same, used by session tracker)
+# - leaderboard: 300s (rarely changes, reduce API load)
+_TTL_ROOMS_SECONDS = 8
+_TTL_GROUPS_SECONDS = 8
 _TTL_LEADERBOARD_SECONDS = 300
 
-_BACKOFF_INITIAL_SECONDS = 5
-_BACKOFF_MAX_SECONDS = 60
+# Backoff settings
+_BACKOFF_INITIAL_SECONDS = 10
+_BACKOFF_MAX_SECONDS = 120
 
 
 def _ensure_cache_dir():
+    """Create cache directory if it doesn't exist."""
     try:
         os.makedirs(_CACHE_DIR, exist_ok=True)
     except Exception:
         pass
 
 
+@contextmanager
+def _file_lock(path):
+    """Context manager for file locking to prevent concurrent fetches."""
+    lock_path = f"{path}.lock"
+    _ensure_cache_dir()
+    lock_file = None
+    try:
+        lock_file = open(lock_path, 'w')
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        if lock_file:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                lock_file.close()
+            except Exception:
+                pass
+            try:
+                os.remove(lock_path)
+            except Exception:
+                pass
+
+
 def _cache_paths(key: str):
+    """Return paths for cache data and backoff files."""
     _ensure_cache_dir()
     data_path = os.path.join(_CACHE_DIR, f"{key}.json")
     backoff_path = os.path.join(_CACHE_DIR, f"{key}.backoff")
@@ -41,6 +85,7 @@ def _cache_paths(key: str):
 
 
 def _read_json_file(path: str):
+    """Read JSON file safely."""
     try:
         with open(path, "r") as f:
             return json.load(f)
@@ -49,6 +94,7 @@ def _read_json_file(path: str):
 
 
 def _write_json_atomic(path: str, payload):
+    """Write JSON atomically using temp file + rename."""
     try:
         tmp = f"{path}.tmp"
         with open(tmp, "w") as f:
@@ -59,6 +105,7 @@ def _write_json_atomic(path: str, payload):
 
 
 def _mtime(path: str):
+    """Get file modification time, or 0 if file doesn't exist."""
     try:
         return os.path.getmtime(path)
     except Exception:
@@ -66,6 +113,7 @@ def _mtime(path: str):
 
 
 def _read_backoff_until(backoff_path: str):
+    """Read backoff timestamp from file."""
     try:
         with open(backoff_path, "r") as f:
             val = f.read().strip()
@@ -75,6 +123,7 @@ def _read_backoff_until(backoff_path: str):
 
 
 def _write_backoff_until(backoff_path: str, until_ts: float):
+    """Write backoff timestamp to file."""
     try:
         with open(backoff_path, "w") as f:
             f.write(str(until_ts))
@@ -83,6 +132,7 @@ def _write_backoff_until(backoff_path: str, until_ts: float):
 
 
 def _clear_backoff(backoff_path: str):
+    """Clear backoff file after successful fetch."""
     try:
         if os.path.exists(backoff_path):
             os.remove(backoff_path)
@@ -92,52 +142,85 @@ def _clear_backoff(backoff_path: str):
 
 def _fetch_with_cache(url: str, key: str, ttl_seconds: int):
     """
-    Shared cached fetch with backoff handling.
-    - Returns cached data if fresh.
-    - On 429: sets backoff and returns cached data if any.
-    - On other errors: returns cached data if any.
+    Shared cached fetch with file locking and exponential backoff.
+    
+    - Returns cached data if fresh (within TTL)
+    - Uses file locking to prevent multiple processes from fetching simultaneously
+    - Implements exponential backoff on 429 errors
+    - Falls back to stale cache if fetch fails
     """
     data_path, backoff_path = _cache_paths(key)
     now = time.time()
 
-    # Respect backoff if present
+    # Check if we're in backoff period
     backoff_until = _read_backoff_until(backoff_path)
     if backoff_until and now < backoff_until:
+        # In backoff - return cached data if available
         cached = _read_json_file(data_path)
         if cached is not None:
             return cached
-        # If no cache, try fetch anyway (last resort)
+        # No cache available, wait a bit and try anyway
+        time.sleep(min(2, backoff_until - now))
 
-    # Use fresh cache
-    if (now - _mtime(data_path)) < ttl_seconds:
+    # Check if cache is fresh
+    cache_age = now - _mtime(data_path)
+    if cache_age < ttl_seconds:
         cached = _read_json_file(data_path)
         if cached is not None:
             return cached
 
-    # Fetch from network
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 429:
-            prev = max(0.0, backoff_until - now) if backoff_until and now < backoff_until else 0.0
-            base = _BACKOFF_INITIAL_SECONDS if prev <= 0 else min(_BACKOFF_MAX_SECONDS, prev * 2)
-            jitter = random.uniform(0, 2)
-            delay = min(_BACKOFF_MAX_SECONDS, base + jitter)
-            _write_backoff_until(backoff_path, now + delay)
+    # Cache is stale or missing - need to fetch
+    # Use file locking to ensure only one process fetches at a time
+    with _file_lock(data_path):
+        # Double-check cache freshness after acquiring lock
+        # (another process might have just updated it)
+        cache_age = now - _mtime(data_path)
+        if cache_age < ttl_seconds:
             cached = _read_json_file(data_path)
             if cached is not None:
                 return cached
-            response.raise_for_status()
 
-        response.raise_for_status()
-        data = response.json()
-        _write_json_atomic(data_path, data)
-        _clear_backoff(backoff_path)
-        return data
-    except Exception:
-        cached = _read_json_file(data_path)
-        if cached is not None:
-            return cached
-        raise
+        # Fetch from network
+        try:
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 429:
+                # Rate limited - implement exponential backoff
+                current_backoff = backoff_until - now if (backoff_until and now < backoff_until) else 0
+                if current_backoff <= 0:
+                    delay = _BACKOFF_INITIAL_SECONDS
+                else:
+                    delay = min(_BACKOFF_MAX_SECONDS, current_backoff * 2)
+                
+                # Add jitter to prevent thundering herd
+                jitter = random.uniform(0, delay * 0.2)
+                total_delay = delay + jitter
+                
+                _write_backoff_until(backoff_path, now + total_delay)
+                
+                # Return stale cache if available
+                cached = _read_json_file(data_path)
+                if cached is not None:
+                    return cached
+                
+                # No cache - raise the error
+                response.raise_for_status()
+
+            response.raise_for_status()
+            data = response.json()
+            
+            # Success - write to cache and clear backoff
+            _write_json_atomic(data_path, data)
+            _clear_backoff(backoff_path)
+            
+            return data
+            
+        except requests.exceptions.RequestException:
+            # Network error - return stale cache if available
+            cached = _read_json_file(data_path)
+            if cached is not None:
+                return cached
+            raise
 
 
 def fetch_rooms():
@@ -161,7 +244,7 @@ def get_room_info(room):
                 "vr": p.get("vr", 0),
                 "fc": p.get("friendCode", ""),
             })
-    # Sort by VR descending (treat None as 0)
+    # Sort by VR descending
     open_hosts.sort(key=lambda x: x["vr"] or 0, reverse=True)
 
     return {

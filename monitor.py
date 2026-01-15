@@ -3,7 +3,6 @@ MKWiiRR Room Dashboard
 Live terminal display of high-VR Retro Rewind rooms.
 """
 
-import time
 import sys
 
 try:
@@ -12,7 +11,8 @@ except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import fetch_rooms, get_high_vr_rooms, find_player_in_groups
+from core import fetch_rooms, get_high_vr_rooms, find_player_in_groups, sleep_with_jitter
+import time
 
 
 def clear_lines(n):
@@ -153,7 +153,7 @@ def main():
                 # Force a redraw on next successful poll so the error line gets cleared
                 last_signature = None
 
-            time.sleep(POLL_INTERVAL)
+            sleep_with_jitter(POLL_INTERVAL)
 
     except KeyboardInterrupt:
         print("\n\nDashboard stopped.")

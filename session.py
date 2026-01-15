@@ -6,7 +6,6 @@ Simply polls /api/groups and detects VR changes.
 
 import json
 import os
-import time
 import sys
 from datetime import datetime
 
@@ -20,7 +19,8 @@ except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import find_player_in_groups, fetch_rooms, get_goal_vr_for_rank
+from core import find_player_in_groups, fetch_rooms, get_goal_vr_for_rank, sleep_with_jitter
+import time
 
 # =============================================================================
 # GRAPH GENERATION
@@ -586,7 +586,7 @@ def main():
             except Exception as e:
                 print(f"\n[Error: {e}]")
             
-            time.sleep(POLL_INTERVAL)
+            sleep_with_jitter(POLL_INTERVAL)
     
     except KeyboardInterrupt:
         print("\n\n" + "=" * 55)
