@@ -20,6 +20,7 @@ def clear_lines(n):
     for _ in range(n):
         sys.stdout.write("\033[A")
         sys.stdout.write("\033[K")
+    sys.stdout.flush()
 
 
 def _format_room_line(room):
