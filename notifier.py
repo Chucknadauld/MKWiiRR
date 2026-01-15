@@ -11,7 +11,7 @@ try:
     from config import (
         VR_THRESHOLD, VR_GRACE, POLL_INTERVAL_NOTIFIER as POLL_INTERVAL,
         RETRO_TRACKS_ONLY, NOTIFY_NEW_ROOM, NOTIFY_BECAME_JOINABLE,
-        WATCHLIST_FRIEND_CODES, WATCHLIST_NOTIFY
+        WATCHLIST_FRIEND_CODES, WATCHLIST_NOTIFY, WATCHLIST
     )
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
@@ -69,7 +69,7 @@ def notify_became_joinable(room):
 
 def notify_watchlist(room, matches):
     """Notify when watchlisted friend codes are present in a room."""
-    names = ", ".join([f"{m.get('name')} ({m.get('friendCode')})" for m in matches])
+    names = ", ".join([f"{m.get('nickname') or m.get('name')} ({m.get('friendCode')})" for m in matches])
     # Terminal output
     print("\n" + "=" * 55)
     print(f"WATCHLIST IN ROOM {room['id']}!")
@@ -120,13 +120,17 @@ def main():
                         continue
 
                     # Watchlist notifications (optional)
-                    if WATCHLIST_NOTIFY and WATCHLIST_FRIEND_CODES:
-                        wl_set = set(WATCHLIST_FRIEND_CODES)
+                    if WATCHLIST_NOTIFY and (WATCHLIST or WATCHLIST_FRIEND_CODES):
+                        wl_map = WATCHLIST or {}
+                        wl_set = set(WATCHLIST_FRIEND_CODES) | set(wl_map.keys())
                         matches = []
                         for p in room.get("players", []):
                             fc = p.get("friendCode")
                             if fc and fc in wl_set:
-                                matches.append(p)
+                                p2 = dict(p)
+                                if fc in wl_map:
+                                    p2["nickname"] = wl_map.get(fc)
+                                matches.append(p2)
                         if matches:
                             already = watchlist_seen.get(rid, set())
                             new_codes = {p.get("friendCode") for p in matches} - already

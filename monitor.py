@@ -7,7 +7,7 @@ import time
 import sys
 
 try:
-    from config import VR_THRESHOLD, POLL_INTERVAL_DASHBOARD as POLL_INTERVAL, RETRO_TRACKS_ONLY, SHOW_OPEN_HOSTS, WATCHLIST_FRIEND_CODES, PLAYER_FRIEND_CODE
+    from config import VR_THRESHOLD, POLL_INTERVAL_DASHBOARD as POLL_INTERVAL, RETRO_TRACKS_ONLY, SHOW_OPEN_HOSTS, WATCHLIST_FRIEND_CODES, PLAYER_FRIEND_CODE, WATCHLIST
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
@@ -41,7 +41,7 @@ def _format_host_lines(room):
     return lines
 
 
-def print_dashboard(rooms, lines_printed, last_signature, current_room_id=None, watch_hits=None):
+def print_dashboard(rooms, lines_printed, last_signature, current_room_id=None, watchlist_section=None):
     """Print live dashboard only when content changes.
     Returns (lines_printed, new_signature).
     """
@@ -56,11 +56,12 @@ def print_dashboard(rooms, lines_printed, last_signature, current_room_id=None, 
         for idx, room in enumerate(rooms):
             stable_lines.append(_format_room_line(room))
             stable_lines.extend(_format_host_lines(room))
-            if watch_hits and room["id"] in watch_hits:
-                names = ", ".join(watch_hits[room["id"]])
-                stable_lines.append(f"    Watchlist: {names}")
             if idx < len(rooms) - 1:
                 stable_lines.append("")  # blank line between rooms
+    # Append watchlist section
+    if watchlist_section is not None:
+        stable_lines.append("")
+        stable_lines.extend(watchlist_section)
 
     signature = "\n".join(stable_lines)
 
@@ -85,11 +86,12 @@ def print_dashboard(rooms, lines_printed, last_signature, current_room_id=None, 
         for idx, room in enumerate(rooms):
             display_lines.append(_format_room_line(room))
             display_lines.extend(_format_host_lines(room))
-            if watch_hits and room["id"] in watch_hits:
-                names = ", ".join(watch_hits[room["id"]])
-                display_lines.append(f"    Watchlist: {names}")
             if idx < len(rooms) - 1:
                 display_lines.append("")  # blank line between rooms
+        # Append watchlist section for display
+        if watchlist_section is not None:
+            display_lines.append("")
+            display_lines.extend(watchlist_section)
 
     for line in display_lines:
         print(line)
@@ -117,29 +119,27 @@ def main():
                 high_vr_rooms = get_high_vr_rooms(rooms, VR_THRESHOLD, RETRO_TRACKS_ONLY)
                 # Compute current room
                 current_room_id, _ = find_player_in_groups(PLAYER_FRIEND_CODE)
-                # Compute watchlist hits
-                watch_hits = {}
-                if WATCHLIST_FRIEND_CODES:
-                    wl_set = set(WATCHLIST_FRIEND_CODES)
+                # Build independent Watchlist section (regardless of VR/room type)
+                wl_map = WATCHLIST or {}
+                wl_set = set(WATCHLIST_FRIEND_CODES) | set(wl_map.keys())
+                watchlist_lines = ["Watchlist"]
+                online = []
+                if wl_set:
                     for r in rooms:
                         if r.get("type") == "private":
                             continue
-                        # Respect retro filter
-                        if RETRO_TRACKS_ONLY:
-                            # quick check via rk label: vs_ codes are retro; else skip
-                            rk = (r.get("rk") or "").lower()
-                            label = (r.get("roomType") or "").strip().lower()
-                            if not ("vs" in rk or label == "retro tracks"):
-                                continue
-                        hits = []
+                        rid = r.get("id")
                         for p in r.get("players", []):
                             fc = p.get("friendCode")
                             if fc and fc in wl_set:
-                                name = p.get("name", "Unknown")
-                                hits.append(f"{name} ({fc})")
-                        if hits:
-                            watch_hits[r.get("id")] = hits
-                lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature, current_room_id, watch_hits)
+                                nickname = wl_map.get(fc)
+                                name = nickname or p.get("name", "Unknown")
+                                online.append(f"  {name} ({fc}) — Room {rid}")
+                if online:
+                    watchlist_lines.extend(online)
+                else:
+                    watchlist_lines.append("  No watchlist players online")
+                lines_printed, last_signature = print_dashboard(high_vr_rooms, lines_printed, last_signature, current_room_id, watchlist_lines)
 
             except Exception as e:
                 if lines_printed > 0:

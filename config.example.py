@@ -24,7 +24,7 @@ NOTIFY_BECAME_JOINABLE = True       # Notify when a room becomes joinable
 SHOW_OPEN_HOSTS = True              # Show open host players with VR and friend codes
 
 # Session tracker settings
-PLAYER_FRIEND_CODE = "1760-9375-6261"  # Your friend code for session tracking
+PLAYER_FRIEND_CODE = "0000-0000-0000"  # Your friend code for session tracking
 POLL_INTERVAL_SESSION = 10             # Seconds between session tracker polls
 SAVE_SESSION_DATA = False              # Save session data to file for later review
 SESSION_DATA_DIR = "sessions"          # Directory for saved session data (gitignored)
@@ -32,8 +32,15 @@ SESSION_DATA_DIR = "sessions"          # Directory for saved session data (gitig
 # Watchlist settings
 # List one or more friend codes to watch; notifier will alert when they appear in a room,
 # and monitor will highlight rooms containing any of them.
-WATCHLIST_FRIEND_CODES = []            # e.g., ["0944-8938-8437", "3994-3199-5844"]
+WATCHLIST_FRIEND_CODES = []            # e.g., ["0995-0993-0993", "1234-5678-9012"]
 WATCHLIST_NOTIFY = True                # Send notifications for watchlist appearances
+#
+# Optional: Nicknames for watchlist friend codes (shown in monitor and notifications)
+# Map friend code -> nickname. If missing, the in-game name will be used.
+WATCHLIST = {
+    # "0995-0993-0993": "Chuckomode",
+    # "1234-5678-9012": "example",
+}
 
 # Goal settings (session tracker)
 #

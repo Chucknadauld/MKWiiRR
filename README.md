@@ -19,6 +19,11 @@ Live display of high-VR rooms (updates in-place):
 ```bash
 python monitor.py
 ```
+The dashboard shows:
+- Your current room at the top (based on `PLAYER_FRIEND_CODE`)
+- High‑VR rooms
+- A Watchlist section at the bottom listing friends online (name/nickname and FC), regardless of room type or average VR
+  - If none are online, it shows “No watchlist players online”
 
 ### Notifier
 
@@ -27,6 +32,7 @@ Alerts when rooms hit VR threshold or become joinable:
 ```bash
 python notifier.py
 ```
+In addition to VR threshold alerts, the notifier can alert when any watchlisted friend codes are seen in a room (once per friend per room) using `WATCHLIST_NOTIFY`.
 
 Run notifier in background (keeps running after closing terminal):
 
@@ -70,6 +76,13 @@ Edit `config.py` to customize:
 | `POLL_INTERVAL_SESSION`   | 10             | Seconds between session tracker polls           |
 | `SAVE_SESSION_DATA`       | False          | Save session data to JSON files                 |
 | `SESSION_DATA_DIR`        | sessions       | Directory for saved session data (gitignored)   |
+| `WATCHLIST_FRIEND_CODES`  | []             | List of FCs to watch for                        |
+| `WATCHLIST`               | {}             | Optional map of FC -> Nickname                  |
+| `WATCHLIST_NOTIFY`        | True           | Notify when any watchlisted FC appears          |
+| `GOAL_LEADERBOARD_RANK`   | 0              | Rank to fetch target VR for (0 to disable)      |
+| `GOAL_LABEL`              | "For rank A"   | Label for the goal box (supports `{rank}`)      |
+| `GOAL_TARGET_VR`          | 0              | If > 0, overrides goal VR number                |
+| `GOAL_TARGET_VR_TEXT`     | ""             | If set, overrides the goal VR text verbatim     |
 
 ## Background Commands
 
