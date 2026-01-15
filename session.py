@@ -13,7 +13,8 @@ from datetime import datetime
 try:
     from config import (
         PLAYER_FRIEND_CODE, POLL_INTERVAL_SESSION as POLL_INTERVAL,
-        SAVE_SESSION_DATA, SESSION_DATA_DIR, GOAL_LEADERBOARD_RANK
+        SAVE_SESSION_DATA, SESSION_DATA_DIR, GOAL_LEADERBOARD_RANK, GOAL_LABEL,
+        GOAL_TARGET_VR, GOAL_TARGET_VR_TEXT
     )
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
@@ -178,7 +179,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="stat-value {top_streak_class}">{top_streak_value_text}</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Goal (Top {goal_rank})</div>
+                <div class="stat-label">{goal_label}</div>
                 <div class="stat-value neutral">{goal_vr_text}</div>
             </div>
         </div>
@@ -417,9 +418,17 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     net_class = "positive" if net_change > 0 else "negative" if net_change < 0 else "neutral"
     # Goal VR (leaderboard rank)
     goal_rank = GOAL_LEADERBOARD_RANK if 'GOAL_LEADERBOARD_RANK' in globals() else 0
+    goal_label = GOAL_LABEL.format(rank=goal_rank) if 'GOAL_LABEL' in globals() else f"Goal (Top {goal_rank})"
     goal_vr_text = "—"
     try:
-        if goal_rank and int(goal_rank) > 0:
+        # Prefer explicit text override
+        if GOAL_TARGET_VR_TEXT:
+            goal_vr_text = str(GOAL_TARGET_VR_TEXT)
+        # Then numeric override
+        elif isinstance(GOAL_TARGET_VR, int) and GOAL_TARGET_VR > 0:
+            goal_vr_text = f"{GOAL_TARGET_VR:,}"
+        # Else fetch by rank
+        elif goal_rank and int(goal_rank) > 0:
             goal_vr = get_goal_vr_for_rank(goal_rank)
             if isinstance(goal_vr, int) and goal_vr > 0:
                 goal_vr_text = f"{goal_vr:,}"
@@ -453,6 +462,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         net_class=net_class,
         race_count=race_count,
         goal_rank=goal_rank,
+        goal_label=goal_label,
         goal_vr_text=goal_vr_text,
         chart_data=json.dumps(chart_data),
         race_history_html=race_history_html,
