@@ -129,12 +129,15 @@ def main():
                         if r.get("type") == "private":
                             continue
                         rid = r.get("id")
+                        # Compute average VR for the room
+                        vr_values = [p.get("vr") for p in r.get("players", []) if isinstance(p.get("vr"), (int, float))]
+                        avg_vr = int(sum(vr_values) / len(vr_values)) if vr_values else 0
                         for p in r.get("players", []):
                             fc = p.get("friendCode")
                             if fc and fc in wl_set:
                                 nickname = wl_map.get(fc)
                                 name = nickname or p.get("name", "Unknown")
-                                online.append(f"  {name} ({fc}) — Room {rid}")
+                                online.append(f"  {name} ({fc}) — Room {rid} - Avg VR {avg_vr:,}")
                 if online:
                     watchlist_lines.extend(online)
                 else:

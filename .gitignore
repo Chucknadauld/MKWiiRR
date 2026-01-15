@@ -42,3 +42,4 @@ config.py
 session_graph.html
 sessions/
 notifier.log
+.cache
