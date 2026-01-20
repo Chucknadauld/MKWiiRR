@@ -436,6 +436,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     goal_label = GOAL_LABEL.format(rank=goal_rank) if 'GOAL_LABEL' in globals() else f"Goal (Top {goal_rank})"
     goal_vr_text = "—"
     goal_vr_num = None
+    current_target_rank = None
     try:
         # Prefer explicit text override
         if GOAL_TARGET_VR_TEXT:
@@ -450,6 +451,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
                 me = fetch_player_info(PLAYER_FRIEND_CODE)
                 my_rank = int(me.get("rank") or 0)
                 target_rank = max(1, my_rank - 1) if my_rank > 0 else (goal_rank if goal_rank else 0)
+                current_target_rank = target_rank if target_rank else None
                 if target_rank > 0:
                     goal_vr = get_goal_vr_for_rank(target_rank)
                     if isinstance(goal_vr, int) and goal_vr > 0:
@@ -464,6 +466,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
                 pass
         # Else fetch by configured rank
         elif goal_rank and int(goal_rank) > 0:
+            current_target_rank = goal_rank
             goal_vr = get_goal_vr_for_rank(goal_rank)
             if isinstance(goal_vr, int) and goal_vr > 0:
                 goal_vr_num = goal_vr
@@ -485,6 +488,23 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     # Delta to goal
     if isinstance(goal_vr_num, int) and goal_vr_num > 0:
         diff = goal_vr_num - current_vr
+        # If auto-next is enabled and we've reached the goal, immediately advance one rank
+        if 'AUTO_NEXT_GOAL' in globals() and AUTO_NEXT_GOAL and diff <= 0:
+            advance_from = current_target_rank if current_target_rank else (goal_rank if goal_rank else None)
+            if advance_from and advance_from > 1:
+                next_rank = advance_from - 1
+                try:
+                    new_goal = get_goal_vr_for_rank(next_rank)
+                    if isinstance(new_goal, int) and new_goal > 0:
+                        goal_vr_num = new_goal
+                        goal_vr_text = f"{new_goal:,}"
+                        if 'GOAL_LABEL' in globals():
+                            goal_label = GOAL_LABEL.format(rank=next_rank)
+                        else:
+                            goal_label = f"Goal (Top {next_rank})"
+                        diff = goal_vr_num - current_vr
+                except Exception:
+                    pass
         goal_delta_text = "Goal reached" if diff <= 0 else f"{diff:,} VR to goal"
     else:
         goal_delta_text = ""
