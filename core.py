@@ -302,9 +302,9 @@ def find_player_room(rooms, friend_code):
 def fetch_player_info(friend_code):
     """Fetch player info from leaderboard API."""
     url = f"https://rwfc.net/api/leaderboard/player/{friend_code}"
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
-    return response.json()
+    key = f"leaderboard_player_{friend_code}"
+    data = _fetch_with_cache(url, key, _TTL_LEADERBOARD_SECONDS)
+    return data
 
 
 def fetch_player_history(friend_code, count=50):

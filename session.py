@@ -326,6 +326,11 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
             rank_text = f"{int(my_rank):,}"
     except Exception:
         pass
+    # Persist/fallback for rank
+    if rank_text != "—":
+        session_data["last_rank_text"] = rank_text
+    else:
+        rank_text = session_data.get("last_rank_text", "—")
     # Compute current positive VR streak (sum and count of consecutive non-losses; 0 counts as win)
     streak_vr = 0
     streak_races = 0
@@ -466,6 +471,17 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     except Exception:
         goal_vr_text = "—"
         goal_vr_num = None
+    # Persist/fallback for goal values
+    if isinstance(goal_vr_num, int) and goal_vr_num > 0:
+        session_data["last_goal_vr_num"] = goal_vr_num
+        session_data["last_goal_vr_text"] = goal_vr_text
+        session_data["last_goal_label"] = goal_label
+    else:
+        # Use last known if available
+        if "last_goal_vr_num" in session_data and "last_goal_vr_text" in session_data:
+            goal_vr_num = session_data.get("last_goal_vr_num")
+            goal_vr_text = session_data.get("last_goal_vr_text")
+            goal_label = session_data.get("last_goal_label", goal_label)
     # Delta to goal
     if isinstance(goal_vr_num, int) and goal_vr_num > 0:
         diff = goal_vr_num - current_vr
