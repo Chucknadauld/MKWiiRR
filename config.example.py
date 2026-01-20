@@ -49,6 +49,10 @@ WATCHLIST = {
 # GOAL_LABEL = "Goal (Top {rank})"
 GOAL_LEADERBOARD_RANK = 0  # leave 0 when using custom goal
 
+# Automatically set goal to the next better leaderboard position
+# When True, the session tracker will fetch your current rank and target rank-1
+AUTO_NEXT_GOAL = False
+
 # Custom goal (manual)
 GOAL_LABEL = "For rank A"
 

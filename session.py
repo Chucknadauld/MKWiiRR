@@ -13,13 +13,13 @@ try:
     from config import (
         PLAYER_FRIEND_CODE, POLL_INTERVAL_SESSION as POLL_INTERVAL,
         SAVE_SESSION_DATA, SESSION_DATA_DIR, GOAL_LEADERBOARD_RANK, GOAL_LABEL,
-        GOAL_TARGET_VR, GOAL_TARGET_VR_TEXT
+        GOAL_TARGET_VR, GOAL_TARGET_VR_TEXT, AUTO_NEXT_GOAL
     )
 except ImportError:
     print("Error: config.py not found. Copy config.example.py to config.py")
     sys.exit(1)
 
-from core import find_player_in_groups, fetch_rooms, get_goal_vr_for_rank, sleep_with_jitter
+from core import find_player_in_groups, fetch_rooms, get_goal_vr_for_rank, sleep_with_jitter, fetch_player_info
 import time
 
 # =============================================================================
@@ -155,7 +155,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="container">
         <h1>🏎️ MKWii Retro Rewind Session Tracker</h1>
-        <p class="subtitle">Total session time: <span id="sessionDuration">{session_duration}</span></p>
+        <p class="subtitle">Total session time: <span id="sessionDuration">{session_duration}</span> • Rank: {rank_text}</p>
         
         <div class="stats">
             <div class="stat-box">
@@ -181,6 +181,7 @@ GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="stat-box">
                 <div class="stat-label">{goal_label}</div>
                 <div class="stat-value neutral">{goal_vr_text}</div>
+                <div class="stat-sub neutral">{goal_delta_text}</div>
             </div>
         </div>
         
@@ -316,6 +317,15 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         session_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception:
         session_duration = "--:--:--"
+    # Fetch current leaderboard rank
+    rank_text = "—"
+    try:
+        me = fetch_player_info(PLAYER_FRIEND_CODE)
+        my_rank = me.get("rank")
+        if my_rank is not None:
+            rank_text = f"{int(my_rank):,}"
+    except Exception:
+        pass
     # Compute current positive VR streak (sum and count of consecutive non-losses; 0 counts as win)
     streak_vr = 0
     streak_races = 0
@@ -416,24 +426,52 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     net_change = current_vr - session_data["start_vr"]
     
     net_class = "positive" if net_change > 0 else "negative" if net_change < 0 else "neutral"
-    # Goal VR (leaderboard rank)
+    # Goal VR (rank/manual/auto-next) and delta to goal
     goal_rank = GOAL_LEADERBOARD_RANK if 'GOAL_LEADERBOARD_RANK' in globals() else 0
     goal_label = GOAL_LABEL.format(rank=goal_rank) if 'GOAL_LABEL' in globals() else f"Goal (Top {goal_rank})"
     goal_vr_text = "—"
+    goal_vr_num = None
     try:
         # Prefer explicit text override
         if GOAL_TARGET_VR_TEXT:
             goal_vr_text = str(GOAL_TARGET_VR_TEXT)
         # Then numeric override
         elif isinstance(GOAL_TARGET_VR, int) and GOAL_TARGET_VR > 0:
-            goal_vr_text = f"{GOAL_TARGET_VR:,}"
-        # Else fetch by rank
+            goal_vr_num = int(GOAL_TARGET_VR)
+            goal_vr_text = f"{goal_vr_num:,}"
+        # Else auto-next-goal: target current rank - 1
+        elif 'AUTO_NEXT_GOAL' in globals() and AUTO_NEXT_GOAL:
+            try:
+                me = fetch_player_info(PLAYER_FRIEND_CODE)
+                my_rank = int(me.get("rank") or 0)
+                target_rank = max(1, my_rank - 1) if my_rank > 0 else (goal_rank if goal_rank else 0)
+                if target_rank > 0:
+                    goal_vr = get_goal_vr_for_rank(target_rank)
+                    if isinstance(goal_vr, int) and goal_vr > 0:
+                        goal_vr_num = goal_vr
+                        goal_vr_text = f"{goal_vr_num:,}"
+                        # Update label to reflect target rank
+                        if 'GOAL_LABEL' in globals():
+                            goal_label = GOAL_LABEL.format(rank=target_rank)
+                        else:
+                            goal_label = f"Goal (Top {target_rank})"
+            except Exception:
+                pass
+        # Else fetch by configured rank
         elif goal_rank and int(goal_rank) > 0:
             goal_vr = get_goal_vr_for_rank(goal_rank)
             if isinstance(goal_vr, int) and goal_vr > 0:
-                goal_vr_text = f"{goal_vr:,}"
+                goal_vr_num = goal_vr
+                goal_vr_text = f"{goal_vr_num:,}"
     except Exception:
         goal_vr_text = "—"
+        goal_vr_num = None
+    # Delta to goal
+    if isinstance(goal_vr_num, int) and goal_vr_num > 0:
+        diff = goal_vr_num - current_vr
+        goal_delta_text = "Goal reached" if diff <= 0 else f"{diff:,} VR to goal"
+    else:
+        goal_delta_text = ""
     
     # Build race history HTML (newest first)
     race_history_items = []
@@ -455,6 +493,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
     
     html = GRAPH_HTML_TEMPLATE.format(
         session_duration=session_duration,
+        rank_text=rank_text,
         session_start_ms=int(start_dt.timestamp() * 1000) if 'start_dt' in locals() else 0,
         start_vr=session_data["start_vr"],
         current_vr=current_vr,
@@ -464,6 +503,7 @@ def generate_graph_html(session_data, output_path="session_graph.html"):
         goal_rank=goal_rank,
         goal_label=goal_label,
         goal_vr_text=goal_vr_text,
+        goal_delta_text=goal_delta_text,
         chart_data=json.dumps(chart_data),
         race_history_html=race_history_html,
         players_section_html=players_section_html,
