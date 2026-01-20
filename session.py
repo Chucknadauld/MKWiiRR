@@ -608,6 +608,7 @@ def main():
     
     generate_graph_html(session_data)
     last_vr = start_vr
+    last_html_refresh = time.time()
     
     try:
         while True:
@@ -636,6 +637,11 @@ def main():
                         generate_graph_html(session_data)
                 else:
                     session_data["room_id"] = None
+                
+                # Periodically refresh HTML to update rank/goal even without VR changes
+                if time.time() - last_html_refresh >= 30:
+                    generate_graph_html(session_data)
+                    last_html_refresh = time.time()
                 
                 print_status(session_data)
                 

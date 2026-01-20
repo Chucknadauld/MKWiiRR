@@ -39,6 +39,7 @@ _GROUPS_KEY = "groups"
 _TTL_ROOMS_SECONDS = 8
 _TTL_GROUPS_SECONDS = 8
 _TTL_LEADERBOARD_SECONDS = 300
+_TTL_PLAYER_SECONDS = 60
 
 # Backoff settings
 _BACKOFF_INITIAL_SECONDS = 10
@@ -303,7 +304,7 @@ def fetch_player_info(friend_code):
     """Fetch player info from leaderboard API."""
     url = f"https://rwfc.net/api/leaderboard/player/{friend_code}"
     key = f"leaderboard_player_{friend_code}"
-    data = _fetch_with_cache(url, key, _TTL_LEADERBOARD_SECONDS)
+    data = _fetch_with_cache(url, key, _TTL_PLAYER_SECONDS)
     return data
 
 
